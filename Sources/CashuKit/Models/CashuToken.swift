@@ -5,7 +5,7 @@
 //  Created by Thomas Rademaker on 6/22/25.
 //
 
-public struct CashuToken: Codable, Sendable {
+public struct CashuToken: CashuCodabale {
    public let token: [TokenEntry]
    public let unit: String?
    public let memo: String?
