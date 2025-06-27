@@ -69,20 +69,23 @@ public struct CashuExamples {
     }
     
     /// Example: Get mint information
-    public static func getMintInfo(from mintURL: String) async throws -> NUT01_MintInformation.MintInfo {
-        return try await NUT01_MintInformation.getMintInfo(from: mintURL)
+    public static func getMintInfo(from mintURL: String) async throws -> MintInfo {
+        let mintService = await MintService()
+        return try await mintService.getMintInfo(from: mintURL)
     }
     
     /// Example: Check if mint is available
     public static func isMintAvailable(_ mintURL: String) async -> Bool {
-        return await NUT01_MintInformation.isMintAvailable(mintURL)
+        let mintService = await MintService()
+        return await mintService.isMintAvailable(mintURL)
     }
     
     /// Example: Create mock mint info for testing
-    public static func createMockMintInfo() throws -> NUT01_MintInformation.MintInfo {
+    public static func createMockMintInfo() async throws -> MintInfo {
         let keypair = try CashuKeyUtils.generateMintKeypair()
         let pubkey = keypair.publicKey.compressedRepresentation.hexString
-        return NUT01_MintInformation.createMockMintInfo(pubkey: pubkey)
+        let mintService = await MintService()
+        return mintService.createMockMintInfo(pubkey: pubkey)
     }
 }
 
@@ -92,14 +95,14 @@ public struct CashuExamples {
 public struct CashuTesting {
     
     /// Run all available tests
-    public static func runAllTests() throws {
+    public static func runAllTests() async throws {
         print("=== Running CashuKit Tests ===\n")
         
         // Test NUT-00 functionality
         try testNUT00()
         
         // Test NUT-01 functionality
-        try testNUT01()
+        try await testNUT01()
         
         // Test token utilities
         try testTokenUtils()
@@ -130,8 +133,10 @@ public struct CashuTesting {
     }
     
     /// Test NUT-01 Mint Information
-    private static func testNUT01() throws {
+    private static func testNUT01() async throws {
         print("Testing NUT-01: Mint Information")
+        
+        let mintService = await MintService()
         
         // Test URL validation
         let validURLs = [
@@ -147,13 +152,13 @@ public struct CashuTesting {
         ]
         
         for url in validURLs {
-            guard NUT01_MintInformation.validateMintURL(url) || NUT01_MintInformation.validateMintURL("https://" + url) else {
+            guard mintService.validateMintURL(url) || mintService.validateMintURL("https://" + url) else {
                 throw CashuError.validationFailed
             }
         }
         
         for url in invalidURLs {
-            guard !NUT01_MintInformation.validateMintURL(url) else {
+            guard !mintService.validateMintURL(url) else {
                 throw CashuError.validationFailed
             }
         }
@@ -162,9 +167,9 @@ public struct CashuTesting {
         let keypair = try CashuKeyUtils.generateMintKeypair()
         let pubkey = keypair.publicKey.compressedRepresentation.hexString
         
-        let mockInfo = NUT01_MintInformation.createMockMintInfo(pubkey: pubkey)
+        let mockInfo = mintService.createMockMintInfo(pubkey: pubkey)
         
-        guard NUT01_MintInformation.validateMintInfo(mockInfo) else {
+        guard mintService.validateMintInfo(mockInfo) else {
             throw CashuError.validationFailed
         }
         

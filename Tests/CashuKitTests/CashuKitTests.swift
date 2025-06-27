@@ -5,22 +5,24 @@ import Testing
     // Write your test here and use APIs like `#expect(...)` to check expected conditions.
 }
 
-@Test func testNUT01MintInformation() throws {
+@Test func testNUT01MintInformation() async throws {
     // Test NUT-01: Mint Information functionality
     
+    let mintService = await MintService()
+    
     // Test URL validation
-    #expect(NUT01_MintInformation.validateMintURL("https://mint.example.com"))
-    #expect(NUT01_MintInformation.validateMintURL("http://localhost:3338"))
-    #expect(!NUT01_MintInformation.validateMintURL(""))
-    #expect(!NUT01_MintInformation.validateMintURL("not-a-url"))
+    #expect(mintService.validateMintURL("https://mint.example.com"))
+    #expect(mintService.validateMintURL("http://localhost:3338"))
+    #expect(!mintService.validateMintURL(""))
+    #expect(!mintService.validateMintURL("not-a-url"))
     
     // Test mock mint info creation
     let keypair = try CashuKeyUtils.generateMintKeypair()
     let pubkey = keypair.publicKey.compressedRepresentation.hexString
-    let mockInfo = NUT01_MintInformation.createMockMintInfo(pubkey: pubkey)
+    let mockInfo = mintService.createMockMintInfo(pubkey: pubkey)
     
     // Validate the mock info
-    #expect(NUT01_MintInformation.validateMintInfo(mockInfo))
+    #expect(mintService.validateMintInfo(mockInfo))
     #expect(mockInfo.pubkey == pubkey)
     #expect(mockInfo.name == "Test Mint")
     #expect(mockInfo.version == "1.0.0")
@@ -47,24 +49,26 @@ import Testing
     #expect(mockInfo.getNUTVersion("NUT-99") == nil)
     
     // Test mint compatibility
-    let mockInfo2 = NUT01_MintInformation.createMockMintInfo(pubkey: pubkey)
-    #expect(NUT01_MintInformation.areMintsCompatible(mockInfo, mockInfo2))
+    let mockInfo2 = mintService.createMockMintInfo(pubkey: pubkey)
+    #expect(mintService.areMintsCompatible(mockInfo, mockInfo2))
 }
 
 @Test func testNUT01HTTPClient() async throws {
     // Test HTTP client functionality with a mock server
     // Note: This test requires a running mint server or will fail gracefully
     
+    let mintService = await MintService()
+    
     // Test with an invalid URL (should fail gracefully)
     do {
-        _ = try await NUT01_MintInformation.getMintInfo(from: "https://invalid-mint-url-that-does-not-exist.com")
-        #expect(false, "Should have thrown an error for invalid URL")
+        _ = try await mintService.getMintInfo(from: "https://invalid-mint-url-that-does-not-exist.com")
+        #expect(Bool(false), "Should have thrown an error for invalid URL")
     } catch {
         // Expected to fail
         #expect(error is CashuError)
     }
     
     // Test availability check with invalid URL
-    let isAvailable = await NUT01_MintInformation.isMintAvailable("https://invalid-mint-url-that-does-not-exist.com")
+    let isAvailable = await mintService.isMintAvailable("https://invalid-mint-url-that-does-not-exist.com")
     #expect(!isAvailable)
 }
