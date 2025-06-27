@@ -15,69 +15,9 @@ import CryptoKit
 
 /// Main CashuKit library entry point
 public struct CashuKit: Sendable {
-    
-    /// Version of CashuKit
-    public static let version = "1.0.0"
-    
-    /// Supported NUTs versions
-    public static let supportedNUTs = [
-        "NUT-00": "Blind Diffie-Hellman Key Exchange",
-        "NUT-01": "Mint Information",
-        "NUT-02": "Mint Key Management",
-        "NUT-03": "Mint Key Distribution",
-        "NUT-04": "Blinded Messages",
-        "NUT-05": "Melt Tokens for Bitcoin",
-        "NUT-06": "Spending Conditions",
-        "NUT-07": "Proofs",
-        "NUT-08": "Blind Signatures",
-        "NUT-09": "Blind Signature DLEQ Proofs",
-        "NUT-10": "Spending Conditions",
-        "NUT-11": "Pay to Pubkey",
-        "NUT-12": "DLEQ Proofs",
-        "NUT-13": "Deterministic Secrets",
-        "NUT-14": "Hashed Timelock Contracts",
-        "NUT-15": "Partial Multi-Path Payments",
-        "NUT-16": "Animated QR Codes",
-        "NUT-17": "WebSocket Subscriptions",
-        "NUT-18": "Payment Requests",
-        "NUT-19": "Cached Responses",
-        "NUT-20": "Signature on Mint Quote",
-        "NUT-21": "Clear Authentication",
-        "NUT-22": "Blind Authentication",
-        "NUT-23": "Payment Method: BOLT11",
-        "NUT-24": "HTTP 402 Payment Required"
-    ]
-    
-    /// Initialize CashuKit
     public init() {}
-    
-    /// Get library information
-    public static func getInfo() -> [String: String] {
-        return [
-            "version": version,
-            "description": "Cashu protocol implementation for Swift",
-            "repository": "https://github.com/cashubtc/nuts",
-            "supported_nuts": "\(supportedNUTs.count) NUTs supported"
-        ]
-    }
-    
-    /// Check if a specific NUT is supported
-    public static func isNUTSupported(_ nut: String) -> Bool {
-        return supportedNUTs.keys.contains(nut)
-    }
-    
-    /// Get description for a specific NUT
-    public static func getNUTDescription(_ nut: String) -> String? {
-        return supportedNUTs[nut]
-    }
 }
 
-// MARK: - Convenience Accessors
-
-/// Global access to CashuKit functionality
-public let cashuKit = CashuKit()
-
-// MARK: - Quick Start Examples
 
 /// Quick start examples for common Cashu operations
 public struct CashuExamples {
@@ -124,6 +64,23 @@ public struct CashuExamples {
     public static func deserializeToken(_ jsonString: String) throws -> CashuToken {
         return try CashuTokenUtils.deserializeToken(jsonString)
     }
+    
+    /// Example: Get mint information
+    public static func getMintInfo(from mintURL: String) async throws -> NUT01_MintInformation.MintInfo {
+        return try await NUT01_MintInformation.getMintInfo(from: mintURL)
+    }
+    
+    /// Example: Check if mint is available
+    public static func isMintAvailable(_ mintURL: String) async -> Bool {
+        return await NUT01_MintInformation.isMintAvailable(mintURL)
+    }
+    
+    /// Example: Create mock mint info for testing
+    public static func createMockMintInfo() throws -> NUT01_MintInformation.MintInfo {
+        let keypair = try CashuKeyUtils.generateMintKeypair()
+        let pubkey = keypair.publicKey.compressedRepresentation.hexString
+        return NUT01_MintInformation.createMockMintInfo(pubkey: pubkey)
+    }
 }
 
 // MARK: - Testing and Validation
@@ -137,6 +94,9 @@ public struct CashuTesting {
         
         // Test NUT-00 functionality
         try testNUT00()
+        
+        // Test NUT-01 functionality
+        try testNUT01()
         
         // Test token utilities
         try testTokenUtils()
@@ -158,7 +118,68 @@ public struct CashuTesting {
             throw CashuError.verificationFailed
         }
         
+        // Verify token has expected properties
+        guard !token.secret.isEmpty && !token.signature.isEmpty else {
+            throw CashuError.validationFailed
+        }
+        
         print("✅ NUT-00 test passed")
+    }
+    
+    /// Test NUT-01 Mint Information
+    private static func testNUT01() throws {
+        print("Testing NUT-01: Mint Information")
+        
+        // Test URL validation
+        let validURLs = [
+            "https://mint.example.com",
+            "http://localhost:3338",
+            "mint.example.com" // Should be normalized to https://
+        ]
+        
+        let invalidURLs = [
+            "",
+            "not-a-url",
+            "ftp://mint.example.com"
+        ]
+        
+        for url in validURLs {
+            guard NUT01_MintInformation.validateMintURL(url) || NUT01_MintInformation.validateMintURL("https://" + url) else {
+                throw CashuError.validationFailed
+            }
+        }
+        
+        for url in invalidURLs {
+            guard !NUT01_MintInformation.validateMintURL(url) else {
+                throw CashuError.validationFailed
+            }
+        }
+        
+        // Test mock mint info creation and validation
+        let keypair = try CashuKeyUtils.generateMintKeypair()
+        let pubkey = keypair.publicKey.compressedRepresentation.hexString
+        
+        let mockInfo = NUT01_MintInformation.createMockMintInfo(pubkey: pubkey)
+        
+        guard NUT01_MintInformation.validateMintInfo(mockInfo) else {
+            throw CashuError.validationFailed
+        }
+        
+        // Test NUT support checking
+        guard mockInfo.supportsNUT("NUT-00") else {
+            throw CashuError.validationFailed
+        }
+        
+        guard mockInfo.supportsBasicOperations() else {
+            throw CashuError.validationFailed
+        }
+        
+        let supportedNUTs = mockInfo.getSupportedNUTs()
+        guard supportedNUTs.contains("NUT-00") && supportedNUTs.contains("NUT-01") else {
+            throw CashuError.validationFailed
+        }
+        
+        print("✅ NUT-01 test passed")
     }
     
     /// Test token utilities
