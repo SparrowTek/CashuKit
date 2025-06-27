@@ -14,8 +14,11 @@ import CryptoKit
 // MARK: - CashuKit Main Entry Point
 
 /// Main CashuKit library entry point
-public struct CashuKit: Sendable {
-    public init() {}
+@CashuActor
+public struct CashuKit {
+    public static func setup(baseURL: String) {
+        CashuEnvironment.current.setup(baseURL: baseURL)
+    }
 }
 
 
