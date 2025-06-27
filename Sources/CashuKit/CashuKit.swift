@@ -21,6 +21,12 @@ enum CashuCryptoError: Error {
     case invalidHexString
     case keyGenerationFailed
     case invalidSignature
+    case networkError(String)
+    case invalidMintURL
+    case mintUnavailable
+    case invalidResponse
+    case rateLimitExceeded
+    case insufficientFunds
 }
 
 // MARK: - Hash to Curve Implementation (NUT-00 Specification)
@@ -442,5 +448,166 @@ struct CashuExamples {
         let differentHex = try differentPoint.toPublicKey().compressedRepresentation.hexString
         print("Different secret point: \(differentHex)")
         print("Different results: \(hex1 != differentHex)")
+    }
+}
+
+// MARK: - Token Serialization Utilities
+
+/// Utilities for token serialization and deserialization
+struct CashuTokenUtils {
+    /// Serialize a CashuToken to JSON string
+    static func serializeToken(_ token: CashuToken) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let data = try encoder.encode(token)
+        guard let jsonString = String(data: data, encoding: .utf8) else {
+            throw CashuCryptoError.invalidSignature
+        }
+        return jsonString
+    }
+    
+    /// Deserialize a CashuToken from JSON string
+    static func deserializeToken(_ jsonString: String) throws -> CashuToken {
+        guard let data = jsonString.data(using: .utf8) else {
+            throw CashuCryptoError.invalidSignature
+        }
+        let decoder = JSONDecoder()
+        return try decoder.decode(CashuToken.self, from: data)
+    }
+    
+    /// Create a CashuToken from UnblindedToken and mint information
+    static func createToken(
+        from unblindedToken: UnblindedToken,
+        mintURL: String,
+        amount: Int,
+        unit: String? = nil,
+        memo: String? = nil
+    ) -> CashuToken {
+        let proof = Proof(
+            amount: amount,
+            id: UUID().uuidString,
+            secret: unblindedToken.secret,
+            C: unblindedToken.signature.hexString
+        )
+        
+        let tokenEntry = TokenEntry(
+            mint: mintURL,
+            proofs: [proof]
+        )
+        
+        return CashuToken(
+            token: [tokenEntry],
+            unit: unit,
+            memo: memo
+        )
+    }
+    
+    /// Extract all proofs from a CashuToken
+    static func extractProofs(from token: CashuToken) -> [Proof] {
+        return token.token.flatMap { $0.proofs }
+    }
+    
+    /// Validate token structure
+    static func validateToken(_ token: CashuToken) -> Bool {
+        // Check that token has at least one entry
+        guard !token.token.isEmpty else { return false }
+        
+        // Check that each token entry has at least one proof
+        for entry in token.token {
+            guard !entry.proofs.isEmpty else { return false }
+            
+            // Validate each proof
+            for proof in entry.proofs {
+                guard proof.amount > 0,
+                      !proof.id.isEmpty,
+                      !proof.secret.isEmpty,
+                      !proof.C.isEmpty else {
+                    return false
+                }
+            }
+        }
+        
+        return true
+    }
+}
+
+// MARK: - Amount-Specific Key Management
+
+/// Represents a mint's keys organized by amount
+struct MintKeys {
+    /// Dictionary mapping amount to keypair
+    private var keypairs: [Int: MintKeypair] = [:]
+    
+    /// Get or create a keypair for a specific amount
+    mutating func getKeypair(for amount: Int) throws -> MintKeypair {
+        if let existing = keypairs[amount] {
+            return existing
+        }
+        
+        let newKeypair = try MintKeypair()
+        keypairs[amount] = newKeypair
+        return newKeypair
+    }
+    
+    /// Get all amounts that have keys
+    var amounts: [Int] {
+        return Array(keypairs.keys).sorted()
+    }
+    
+    /// Get public keys for all amounts
+    func getPublicKeys() -> [Int: String] {
+        var publicKeys: [Int: String] = [:]
+        for (amount, keypair) in keypairs {
+            publicKeys[amount] = keypair.publicKey.compressedRepresentation.hexString
+        }
+        return publicKeys
+    }
+    
+    /// Verify a proof for a specific amount
+    func verifyProof(_ proof: Proof, for amount: Int) throws -> Bool {
+        guard let keypair = keypairs[amount] else {
+            throw CashuCryptoError.invalidSignature
+        }
+        
+        guard let signatureData = Data(hexString: proof.C) else {
+            throw CashuCryptoError.invalidHexString
+        }
+        
+        let mint = try Mint(privateKey: keypair.privateKey)
+        return try mint.verifyToken(secret: proof.secret, signature: signatureData)
+    }
+}
+
+// MARK: - Network Error Handling
+
+// MARK: - Mint API Integration (Placeholder)
+
+/// Placeholder for mint API integration
+struct MintAPI {
+    let baseURL: String
+    
+    init(mintURL: String) {
+        self.baseURL = mintURL
+    }
+    
+    /// Get mint's public keys for all amounts
+    func getKeys() async throws -> [Int: String] {
+        // This would make an HTTP request to /keys endpoint
+        // For now, return empty dictionary
+        return [:]
+    }
+    
+    /// Request minting of tokens
+    func mintTokens(blindedMessages: [BlindedMessage]) async throws -> [BlindSignature] {
+        // This would make an HTTP request to /mint endpoint
+        // For now, return empty array
+        return []
+    }
+    
+    /// Spend tokens
+    func spendTokens(proofs: [Proof]) async throws -> Bool {
+        // This would make an HTTP request to /melt endpoint
+        // For now, return true
+        return true
     }
 }
