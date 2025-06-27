@@ -1,0 +1,15 @@
+{
+  "originHash" : "7f162e97de411df49798b19103d5dec96a22741d804669a191502a4879fc50da",
+  "pins" : [
+    {
+      "identity" : "k1",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/radmakr/K1.git",
+      "state" : {
+        "branch" : "rademaker_point_add_subtract",
+        "revision" : "46393ab22baca4e3ad75a7af5c9861ce284396a9"
+      }
+    }
+  ],
+  "version" : 3
+}

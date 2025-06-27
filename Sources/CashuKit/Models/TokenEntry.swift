@@ -1,0 +1,11 @@
+//
+//  TokenEntry.swift
+//  CashuKit
+//
+//  Created by Thomas Rademaker on 6/22/25.
+//
+
+public struct TokenEntry: Codable, Sendable {
+   public let mint: String
+   public let proofs: [Proof]
+}
