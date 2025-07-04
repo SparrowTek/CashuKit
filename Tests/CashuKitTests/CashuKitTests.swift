@@ -18,7 +18,7 @@ import Testing
     
     // Test mock mint info creation
     let keypair = try CashuKeyUtils.generateMintKeypair()
-    let pubkey = keypair.publicKey.compressedRepresentation.hexString
+    let pubkey = keypair.publicKey.dataRepresentation.hexString
     let mockInfo = mintService.createMockMintInfo(pubkey: pubkey)
     
     // Validate the mock info
