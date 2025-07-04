@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import K1
+import P256K
 import CryptoKit
 
 // MARK: - NUT-00: Blind Diffie-Hellman Key Exchange
@@ -15,12 +15,25 @@ import CryptoKit
 /// Domain separator for hash-to-curve operations in Cashu
 private let DOMAIN_SEPARATOR = "Secp256k1_HashToCurve_Cashu_".data(using: .utf8)!
 
+// MARK: - KeyAgreement PublicKey Extensions
+
+extension P256K.KeyAgreement.PublicKey {
+    /// Negates a public key by converting to Signing.PublicKey and back
+    public var negation: P256K.KeyAgreement.PublicKey {
+        get throws {
+            let signingKey = try P256K.Signing.PublicKey(dataRepresentation: self.dataRepresentation, format: .compressed)
+            let negatedSigningKey = try signingKey.negation
+            return try P256K.KeyAgreement.PublicKey(dataRepresentation: negatedSigningKey.dataRepresentation, format: .compressed)
+        }
+    }
+}
+
 // MARK: - Hash to Curve Implementation (NUT-00 Specification)
 
 /// Maps a message to a public key point on the secp256k1 curve
 /// Y = hash_to_curve(x) where x is the secret message
 /// Implementation follows NUT-00: Y = PublicKey('02' || SHA256(msg_hash || counter))
-public func hashToCurve(_ message: Data) throws -> K1.Group.Point {
+public func hashToCurve(_ message: Data) throws -> P256K.KeyAgreement.PublicKey {
     // Create message hash: SHA256(DOMAIN_SEPARATOR || x)
     let msgHash = SHA256.hash(data: DOMAIN_SEPARATOR + message)
     
@@ -36,8 +49,8 @@ public func hashToCurve(_ message: Data) throws -> K1.Group.Point {
         let candidateWithPrefix = Data([0x02]) + candidate
         
         do {
-            let publicKey = try K1.KeyAgreement.PublicKey(compressedRepresentation: candidateWithPrefix)
-            return try K1.Group.Point(publicKey: publicKey)
+            let publicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: candidateWithPrefix, format: .compressed)
+            return publicKey
         } catch {
             // This candidate doesn't form a valid point, try next counter
             continue
@@ -48,7 +61,7 @@ public func hashToCurve(_ message: Data) throws -> K1.Group.Point {
 }
 
 /// Convenience function for string messages
-public func hashToCurve(_ message: String) throws -> K1.Group.Point {
+public func hashToCurve(_ message: String) throws -> P256K.KeyAgreement.PublicKey {
     guard let data = message.data(using: .utf8) else {
         throw CashuError.invalidSecretLength
     }
@@ -58,7 +71,7 @@ public func hashToCurve(_ message: String) throws -> K1.Group.Point {
 // MARK: - Generator Point
 
 /// Get the secp256k1 generator point G
-public func getGeneratorPoint() throws -> K1.Group.Point {
+public func getGeneratorPoint() throws -> P256K.KeyAgreement.PublicKey {
     // Create a private key with value 1 to get G = 1*G
     let oneData = Data([
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -67,31 +80,46 @@ public func getGeneratorPoint() throws -> K1.Group.Point {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01
     ])
     
-    let privateKeyOne = try K1.KeyAgreement.PrivateKey(rawRepresentation: oneData)
-    let generatorPublicKey = privateKeyOne.publicKey
-    return try K1.Group.Point(publicKey: generatorPublicKey)
+    let privateKeyOne = try P256K.KeyAgreement.PrivateKey(dataRepresentation: oneData)
+    return privateKeyOne.publicKey
 }
 
 // MARK: - Scalar Multiplication
 
 /// Multiply a point by a scalar (private key): scalar * point
 /// This implements k * P where k is a private key and P is a point
-public func multiplyPoint(_ point: K1.Group.Point, by scalar: K1.KeyAgreement.PrivateKey) throws -> K1.Group.Point {
-    // Convert point to public key for scalar multiplication
-    let publicKey = try point.toPublicKey()
+public func multiplyPoint(_ point: P256K.KeyAgreement.PublicKey, by scalar: P256K.KeyAgreement.PrivateKey) throws -> P256K.KeyAgreement.PublicKey {
+    // Convert to Signing keys to use the tweak multiply functionality
+    let signingPoint = try P256K.Signing.PublicKey(dataRepresentation: point.dataRepresentation, format: .compressed)
+    let signingScalar = try P256K.Signing.PrivateKey(dataRepresentation: scalar.rawRepresentation)
     
-    // Use ECDH point function to get scalar * point without hashing
-    let resultData = try scalar.ecdhPoint(with: publicKey)
+    // Use the tweak multiply functionality: point * scalar
+    let resultSigningPoint = try signingPoint.multiply(signingScalar.dataRepresentation.bytes, format: .compressed)
     
-    // Parse the uncompressed point data (65 bytes: 0x04 + 32 bytes x + 32 bytes y)
-    guard resultData.count == 65 && resultData[0] == 0x04 else {
-        throw CashuError.invalidPoint
-    }
+    // Convert back to KeyAgreement key
+    return try P256K.KeyAgreement.PublicKey(dataRepresentation: resultSigningPoint.dataRepresentation, format: .compressed)
+}
+
+// MARK: - Point Addition
+
+/// Add two points on the secp256k1 curve
+public func addPoints(_ point1: P256K.KeyAgreement.PublicKey, _ point2: P256K.KeyAgreement.PublicKey) throws -> P256K.KeyAgreement.PublicKey {
+    // Convert to Signing keys to use the combine functionality
+    let signingPoint1 = try P256K.Signing.PublicKey(dataRepresentation: point1.dataRepresentation, format: .compressed)
+    let signingPoint2 = try P256K.Signing.PublicKey(dataRepresentation: point2.dataRepresentation, format: .compressed)
     
-    let x = resultData[1..<33]
-    let y = resultData[33..<65]
+    // Use the combine functionality to add points
+    let resultSigningPoint = try signingPoint1.combine([signingPoint2], format: .compressed)
     
-    return try K1.Group.Point(x: Data(x), y: Data(y))
+    // Convert back to KeyAgreement key
+    return try P256K.KeyAgreement.PublicKey(dataRepresentation: resultSigningPoint.dataRepresentation, format: .compressed)
+}
+
+/// Subtract two points on the secp256k1 curve (point1 - point2)
+public func subtractPoints(_ point1: P256K.KeyAgreement.PublicKey, _ point2: P256K.KeyAgreement.PublicKey) throws -> P256K.KeyAgreement.PublicKey {
+    // To subtract points, we negate the second point and add
+    let negatedPoint2 = try point2.negation
+    return try addPoints(point1, negatedPoint2)
 }
 
 // MARK: - Mint Implementation
@@ -100,21 +128,18 @@ public func multiplyPoint(_ point: K1.Group.Point, by scalar: K1.KeyAgreement.Pr
 /// Each amount has its own key pair in Cashu
 public struct MintKeypair {
     /// k: private key of mint (one for each amount)
-    public let privateKey: K1.KeyAgreement.PrivateKey
+    public let privateKey: P256K.KeyAgreement.PrivateKey
     /// K: public key corresponding to k (K = k*G)
-    public let publicKey: K1.KeyAgreement.PublicKey
-    public let publicKeyPoint: K1.Group.Point
+    public let publicKey: P256K.KeyAgreement.PublicKey
     
     public init() throws {
-        self.privateKey = K1.KeyAgreement.PrivateKey()
+        self.privateKey = try P256K.KeyAgreement.PrivateKey()
         self.publicKey = privateKey.publicKey
-        self.publicKeyPoint = try K1.Group.Point(publicKey: publicKey)
     }
     
-    public init(privateKey: K1.KeyAgreement.PrivateKey) throws {
+    public init(privateKey: P256K.KeyAgreement.PrivateKey) throws {
         self.privateKey = privateKey
         self.publicKey = privateKey.publicKey
-        self.publicKeyPoint = try K1.Group.Point(publicKey: publicKey)
     }
 }
 
@@ -126,7 +151,7 @@ public struct Mint {
         self.keypair = try MintKeypair()
     }
     
-    public init(privateKey: K1.KeyAgreement.PrivateKey) throws {
+    public init(privateKey: P256K.KeyAgreement.PrivateKey) throws {
         self.keypair = try MintKeypair(privateKey: privateKey)
     }
     
@@ -135,15 +160,13 @@ public struct Mint {
     /// Output: C_ = k * B_ (blinded signature)
     public func signBlindedMessage(_ blindedMessage: Data) throws -> Data {
         // Parse B_ as a compressed public key
-        let blindedMessagePublicKey = try K1.KeyAgreement.PublicKey(compressedRepresentation: blindedMessage)
-        let blindedMessagePoint = try K1.Group.Point(publicKey: blindedMessagePublicKey)
+        let blindedMessagePublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: blindedMessage, format: .compressed)
         
         // Sign: C_ = k * B_
-        let blindedSignature = try multiplyPoint(blindedMessagePoint, by: keypair.privateKey)
+        let blindedSignature = try multiplyPoint(blindedMessagePublicKey, by: keypair.privateKey)
         
         // Return C_ as compressed public key data
-        let signaturePublicKey = try blindedSignature.toPublicKey()
-        return signaturePublicKey.compressedRepresentation
+        return blindedSignature.dataRepresentation
     }
     
     /// Step 4 of BDHKE: Verify an unblinded signature
@@ -151,16 +174,14 @@ public struct Mint {
     /// This is how the mint verifies a token is valid when it's spent
     public func verifyToken(secret: String, signature: Data) throws -> Bool {
         // Parse the signature as a compressed public key
-        let signaturePublicKey = try K1.KeyAgreement.PublicKey(compressedRepresentation: signature)
-        _ = try K1.Group.Point(publicKey: signaturePublicKey)
+        let signaturePublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: signature, format: .compressed)
         
         // Compute k * hash_to_curve(x)
         let secretPoint = try hashToCurve(secret)
         let expectedSignature = try multiplyPoint(secretPoint, by: keypair.privateKey)
         
         // Compare the points
-        let expectedPublicKey = try expectedSignature.toPublicKey()
-        return signaturePublicKey.compressedRepresentation == expectedPublicKey.compressedRepresentation
+        return signaturePublicKey.dataRepresentation == expectedSignature.dataRepresentation
     }
 }
 
@@ -171,21 +192,21 @@ public struct WalletBlindingData {
     /// x: UTF-8-encoded secret message
     public let secret: String
     /// r: blinding factor (private key)
-    public let blindingFactor: K1.KeyAgreement.PrivateKey
+    public let blindingFactor: P256K.KeyAgreement.PrivateKey
     /// Y: hash_to_curve(x)
-    public let secretPoint: K1.Group.Point
+    public let secretPoint: P256K.KeyAgreement.PublicKey
     /// B_: blinded message (Y + r*G)
-    public let blindedMessage: K1.Group.Point
+    public let blindedMessage: P256K.KeyAgreement.PublicKey
     
     public init(secret: String) throws {
         self.secret = secret
-        self.blindingFactor = K1.KeyAgreement.PrivateKey()
+        self.blindingFactor = try P256K.KeyAgreement.PrivateKey()
         self.secretPoint = try hashToCurve(secret)
         
         // Create blinded message: B_ = Y + r*G
         let generatorPoint = try getGeneratorPoint()
         let rG = try multiplyPoint(generatorPoint, by: self.blindingFactor)
-        self.blindedMessage = try K1.Group.add(self.secretPoint, rG)
+        self.blindedMessage = try addPoints(self.secretPoint, rG)
     }
 }
 
@@ -212,8 +233,7 @@ public struct Wallet {
         let blindingData = try WalletBlindingData(secret: secret)
         
         // Convert B_ to compressed public key format for transmission
-        let blindedPublicKey = try blindingData.blindedMessage.toPublicKey()
-        let blindedMessage = blindedPublicKey.compressedRepresentation
+        let blindedMessage = blindingData.blindedMessage.dataRepresentation
         
         return (blindingData, blindedMessage)
     }
@@ -224,27 +244,23 @@ public struct Wallet {
     public static func unblindSignature(
         blindedSignature: Data,
         blindingData: WalletBlindingData,
-        mintPublicKey: K1.KeyAgreement.PublicKey
+        mintPublicKey: P256K.KeyAgreement.PublicKey
     ) throws -> UnblindedToken {
         // Parse C_ as a compressed public key
-        let blindedSigPublicKey = try K1.KeyAgreement.PublicKey(compressedRepresentation: blindedSignature)
-        let blindedSigPoint = try K1.Group.Point(publicKey: blindedSigPublicKey)
+        let blindedSigPublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: blindedSignature, format: .compressed)
         
         // Unblind: C = C_ - r*K
-        let mintPublicKeyPoint = try K1.Group.Point(publicKey: mintPublicKey)
-        let rK = try multiplyPoint(mintPublicKeyPoint, by: blindingData.blindingFactor)
-        let unblindedSignaturePoint = try K1.Group.subtract(blindedSigPoint, rK)
+        let rK = try multiplyPoint(mintPublicKey, by: blindingData.blindingFactor)
+        let unblindedSignaturePoint = try subtractPoints(blindedSigPublicKey, rK)
         
         // Convert to data for storage/transmission
-        let unblindedSignaturePublicKey = try unblindedSignaturePoint.toPublicKey()
-        let signatureData = unblindedSignaturePublicKey.compressedRepresentation
+        let signatureData = unblindedSignaturePoint.dataRepresentation
         
         return UnblindedToken(secret: blindingData.secret, signature: signatureData)
     }
     
     /// Verify a token locally (same logic as mint verification)
-    public static func verifyToken(_ token: UnblindedToken, mintPublicKey: K1.KeyAgreement.PublicKey) throws -> Bool {
-        _ = try Mint(privateKey: K1.KeyAgreement.PrivateKey()) // This won't work for verification
+    public static func verifyToken(_ token: UnblindedToken, mintPublicKey: P256K.KeyAgreement.PublicKey) throws -> Bool {
         // Note: This method can't work without the mint's private key
         // Token verification must be done by the mint
         throw CashuError.verificationFailed
@@ -264,7 +280,7 @@ public struct CashuBDHKEProtocol {
         // Setup: Mint publishes public key K = k*G
         let mint = try Mint()
         let mintPublicKey = mint.keypair.publicKey
-        print("1. Mint publishes public key K: \(mintPublicKey.compressedRepresentation.hexString)")
+        print("1. Mint publishes public key K: \(mintPublicKey.dataRepresentation.hexString)")
         
         // Step 1: Wallet picks secret x and computes Y = hash_to_curve(x)
         //         Wallet sends B_ = Y + r*G to mint (blinding)

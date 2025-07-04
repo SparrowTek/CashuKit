@@ -17,14 +17,13 @@ let package = Package(
             targets: ["CashuKit"]),
     ],
     dependencies: [
-//        .package(url: "https://github.com/sajjon/k1.git", from: "0.6.0"),
-        .package(url: "https://github.com/radmakr/K1.git", branch: "rademaker_point_add_subtract")
+        .package(url: "https://github.com/21-DOT-DEV/swift-secp256k1", from: "0.21.1")
     ],
     targets: [
         .target(
             name: "CashuKit",
             dependencies: [
-                .product(name: "K1", package: "k1"),
+                .product(name: "P256K", package: "swift-secp256k1"),
             ]
         ),
         .testTarget(

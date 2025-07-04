@@ -116,7 +116,7 @@ public struct MintKeys {
     public func getPublicKeys() -> [Int: String] {
         var publicKeys: [Int: String] = [:]
         for (amount, keypair) in keypairs {
-            publicKeys[amount] = keypair.publicKey.compressedRepresentation.hexString
+            publicKeys[amount] = keypair.publicKey.dataRepresentation.hexString
         }
         return publicKeys
     }

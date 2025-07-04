@@ -8,7 +8,7 @@
 //
 
 import Foundation
-import K1
+import P256K
 import CryptoKit
 
 // MARK: - CashuKit Main Entry Point
@@ -83,7 +83,7 @@ public struct CashuExamples {
     /// Example: Create mock mint info for testing
     public static func createMockMintInfo() async throws -> MintInfo {
         let keypair = try CashuKeyUtils.generateMintKeypair()
-        let pubkey = keypair.publicKey.compressedRepresentation.hexString
+        let pubkey = keypair.publicKey.dataRepresentation.hexString
         let mintService = await MintService()
         return mintService.createMockMintInfo(pubkey: pubkey)
     }
@@ -165,7 +165,7 @@ public struct CashuTesting {
         
         // Test mock mint info creation and validation
         let keypair = try CashuKeyUtils.generateMintKeypair()
-        let pubkey = keypair.publicKey.compressedRepresentation.hexString
+        let pubkey = keypair.publicKey.dataRepresentation.hexString
         
         let mockInfo = mintService.createMockMintInfo(pubkey: pubkey)
         

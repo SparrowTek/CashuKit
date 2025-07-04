@@ -1,13 +1,13 @@
 {
-  "originHash" : "7f162e97de411df49798b19103d5dec96a22741d804669a191502a4879fc50da",
+  "originHash" : "2a57f5a6c38e9aed34845264bcac54e9aac873332c41a4bf665a2bc6fd502df4",
   "pins" : [
     {
-      "identity" : "k1",
+      "identity" : "swift-secp256k1",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/radmakr/K1.git",
+      "location" : "https://github.com/21-DOT-DEV/swift-secp256k1",
       "state" : {
-        "branch" : "rademaker_point_add_subtract",
-        "revision" : "46393ab22baca4e3ad75a7af5c9861ce284396a9"
+        "revision" : "8c62aba8a3011c9bcea232e5ee007fb0b34a15e2",
+        "version" : "0.21.1"
       }
     }
   ],
