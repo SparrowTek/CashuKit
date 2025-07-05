@@ -12,9 +12,6 @@ import CryptoKit
 
 // MARK: - NUT-00: Blind Diffie-Hellman Key Exchange
 
-/// Domain separator for hash-to-curve operations in Cashu
-private let DOMAIN_SEPARATOR = "Secp256k1_HashToCurve_Cashu_".data(using: .utf8)!
-
 // MARK: - KeyAgreement PublicKey Extensions
 
 extension P256K.KeyAgreement.PublicKey {
@@ -34,6 +31,9 @@ extension P256K.KeyAgreement.PublicKey {
 /// Y = hash_to_curve(x) where x is the secret message
 /// Implementation follows NUT-00: Y = PublicKey('02' || SHA256(msg_hash || counter))
 public func hashToCurve(_ message: Data) throws -> P256K.KeyAgreement.PublicKey {
+    /// Domain separator for hash-to-curve operations in Cashu
+    guard let DOMAIN_SEPARATOR = "Secp256k1_HashToCurve_Cashu_".data(using: .utf8) else { throw CashuError.domainSeperator }
+    
     // Create message hash: SHA256(DOMAIN_SEPARATOR || x)
     let msgHash = SHA256.hash(data: DOMAIN_SEPARATOR + message)
     

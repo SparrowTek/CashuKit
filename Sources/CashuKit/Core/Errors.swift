@@ -19,6 +19,7 @@ public enum CashuError: Error {
     case invalidHexString
     case keyGenerationFailed
     case invalidSignature
+    case domainSeperator
     
     // Network and API errors
     case networkError(String)
