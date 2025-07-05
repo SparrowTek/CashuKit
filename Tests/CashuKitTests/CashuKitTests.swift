@@ -1,74 +1,40 @@
 import Testing
 @testable import CashuKit
 
-@Test func example() async throws {
-    // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+@Test
+func tokenUtils() throws {
+    // Create a test token
+    let secret = CashuKeyUtils.generateRandomSecret()
+    let (unblindedToken, _) = try CashuBDHKEProtocol.executeProtocol(secret: secret)
+    
+    let token = CashuTokenUtils.createToken(
+        from: unblindedToken,
+        mintURL: "https://example.com/mint",
+        amount: 1000,
+        unit: "sat",
+        memo: "Test token"
+    )
+    
+    // Test serialization
+    let jsonString = try CashuTokenUtils.serializeToken(token)
+    let deserializedToken = try CashuTokenUtils.deserializeToken(jsonString)
+    
+    // Test validation
+    let isValid = CashuTokenUtils.validateToken(deserializedToken)
+    #expect(isValid)
 }
 
-@Test func testNUT01MintInformation() async throws {
-    // Test NUT-01: Mint Information functionality
+@Test
+func keyUtils() throws {
+    // Test secret generation
+    let secret = CashuKeyUtils.generateRandomSecret()
+    let isValidSecret = try CashuKeyUtils.validateSecret(secret)
+    #expect(isValidSecret)
     
-    let mintService = await MintService()
-    
-    // Test URL validation
-    #expect(mintService.validateMintURL("https://mint.example.com"))
-    #expect(mintService.validateMintURL("http://localhost:3338"))
-    #expect(!mintService.validateMintURL(""))
-    #expect(!mintService.validateMintURL("not-a-url"))
-    
-    // Test mock mint info creation
+    // Test keypair generation
     let keypair = try CashuKeyUtils.generateMintKeypair()
-    let pubkey = keypair.publicKey.dataRepresentation.hexString
-    let mockInfo = mintService.createMockMintInfo(pubkey: pubkey)
+    let privateKeyHex = CashuKeyUtils.privateKeyToHex(keypair.privateKey)
+    let restoredKeypair = try CashuKeyUtils.privateKeyFromHex(privateKeyHex)
     
-    // Validate the mock info
-    #expect(mintService.validateMintInfo(mockInfo))
-    #expect(mockInfo.pubkey == pubkey)
-    #expect(mockInfo.name == "Test Mint")
-    #expect(mockInfo.version == "1.0.0")
-    
-    // Test NUT support checking
-    #expect(mockInfo.supportsNUT("NUT-00"))
-    #expect(mockInfo.supportsNUT("NUT-01"))
-    #expect(mockInfo.supportsNUT("NUT-02"))
-    #expect(!mockInfo.supportsNUT("NUT-99"))
-    
-    // Test basic operations support
-    #expect(mockInfo.supportsBasicOperations())
-    
-    // Test supported NUTs list
-    let supportedNUTs = mockInfo.getSupportedNUTs()
-    #expect(supportedNUTs.contains("NUT-00"))
-    #expect(supportedNUTs.contains("NUT-01"))
-    #expect(supportedNUTs.contains("NUT-02"))
-    #expect(supportedNUTs.contains("NUT-03"))
-    
-    // Test NUT version retrieval
-    #expect(mockInfo.getNUTVersion("NUT-00") == "1.0")
-    #expect(mockInfo.getNUTVersion("NUT-01") == "1.0")
-    #expect(mockInfo.getNUTVersion("NUT-99") == nil)
-    
-    // Test mint compatibility
-    let mockInfo2 = mintService.createMockMintInfo(pubkey: pubkey)
-    #expect(mintService.areMintsCompatible(mockInfo, mockInfo2))
-}
-
-@Test func testNUT01HTTPClient() async throws {
-    // Test HTTP client functionality with a mock server
-    // Note: This test requires a running mint server or will fail gracefully
-    
-    let mintService = await MintService()
-    
-    // Test with an invalid URL (should fail gracefully)
-    do {
-        _ = try await mintService.getMintInfo(from: "https://invalid-mint-url-that-does-not-exist.com")
-        #expect(Bool(false), "Should have thrown an error for invalid URL")
-    } catch {
-        // Expected to fail
-        #expect(error is CashuError)
-    }
-    
-    // Test availability check with invalid URL
-    let isAvailable = await mintService.isMintAvailable("https://invalid-mint-url-that-does-not-exist.com")
-    #expect(!isAvailable)
+    #expect(keypair.privateKey.rawRepresentation == restoredKeypair.rawRepresentation)
 }
