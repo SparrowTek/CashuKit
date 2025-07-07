@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import P256K
+@preconcurrency import P256K
 import CryptoKit
 
 // MARK: - NUT-00: Blind Diffie-Hellman Key Exchange
@@ -188,7 +188,7 @@ public struct Mint {
 // MARK: - Wallet Implementation
 
 /// Represents wallet's blinding data for one token
-public struct WalletBlindingData {
+public struct WalletBlindingData: Sendable {
     /// x: UTF-8-encoded secret message
     public let secret: String
     /// r: blinding factor (private key)
