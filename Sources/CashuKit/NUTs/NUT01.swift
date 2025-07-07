@@ -1,310 +1,352 @@
 //
-//  NUT01_MintInformation.swift
+//  NUT01.swift
 //  CashuKit
 //
-//  NUT-01: Mint Information
+//  NUT-01: Mint public key exchange
 //  https://github.com/cashubtc/nuts/blob/main/01.md
 //
 
 import Foundation
 
-// MARK: - NUT-01: Mint Information
+// MARK: - NUT-01: Mint public key exchange
 
-/// NUT-01: Mint Information
-/// This NUT defines the mint information endpoint and response format
+/// NUT-01: Mint public key exchange
+/// This NUT defines how wallets receive public keys from mints
 
-/// Mint information response structure
-public struct MintInfo: Codable, Sendable {
-    public let name: String?
-    public let pubkey: String
-    public let version: String?
-    public let description: String?
-    public let descriptionLong: String?
-    public let contact: [String]?
-    public let nuts: [String: String]?
-    public let motd: String?
-    public let parameter: MintParameters?
+// MARK: - Currency Units
+
+/// Supported currency units as defined in NUT-01
+public enum CurrencyUnit: String, CaseIterable, Codable {
+    case btc = "btc"          // Bitcoin (Minor Unit: 8)
+    case sat = "sat"          // Bitcoin's Minor Unit
+    case msat = "msat"        // 1/1000th of a sat
+    case auth = "auth"        // Reserved for Blind Authentication
     
-    public init(
-        name: String? = nil,
-        pubkey: String,
-        version: String? = nil,
-        description: String? = nil,
-        descriptionLong: String? = nil,
-        contact: [String]? = nil,
-        nuts: [String: String]? = nil,
-        motd: String? = nil,
-        parameter: MintParameters? = nil
-    ) {
-        self.name = name
-        self.pubkey = pubkey
-        self.version = version
-        self.description = description
-        self.descriptionLong = descriptionLong
-        self.contact = contact
-        self.nuts = nuts
-        self.motd = motd
-        self.parameter = parameter
+    // ISO 4217 currency codes
+    case usd = "usd"          // US Dollar (Minor Unit: 2)
+    case eur = "eur"          // Euro (Minor Unit: 2)
+    case gbp = "gbp"          // British Pound (Minor Unit: 2)
+    case jpy = "jpy"          // Japanese Yen (Minor Unit: 0)
+    case bhd = "bhd"          // Bahraini Dinar (Minor Unit: 3)
+    
+    // Stablecoin currency codes
+    case usdt = "usdt"        // Tether USD (Minor Unit: 2)
+    case usdc = "usdc"        // USD Coin (Minor Unit: 2)
+    case eurc = "eurc"        // Euro Coin (Minor Unit: 2)
+    case gyen = "gyen"        // GYEN (Minor Unit: 0)
+    
+    /// Minor unit (decimal places) for the currency
+    /// For Bitcoin, ISO 4217 currencies and stablecoins, amounts represent the Minor Unit
+    public var minorUnit: Int {
+        switch self {
+        case .btc:
+            return 8
+        case .sat, .auth:
+            return 0
+        case .msat:
+            return 0 // msat is already the smallest unit
+        case .usd, .eur, .gbp, .usdt, .usdc, .eurc:
+            return 2
+        case .jpy, .gyen:
+            return 0
+        case .bhd:
+            return 3
+        }
     }
     
-    /// Check if this mint supports a specific NUT
-    public func supportsNUT(_ nut: String) -> Bool {
-        return nuts?[nut] != nil
+    /// Human-readable description
+    public var description: String {
+        switch self {
+        case .btc: return "Bitcoin"
+        case .sat: return "Satoshi"
+        case .msat: return "Millisatoshi"
+        case .auth: return "Authentication Token"
+        case .usd: return "US Dollar"
+        case .eur: return "Euro"
+        case .gbp: return "British Pound"
+        case .jpy: return "Japanese Yen"
+        case .bhd: return "Bahraini Dinar"
+        case .usdt: return "Tether USD"
+        case .usdc: return "USD Coin"
+        case .eurc: return "Euro Coin"
+        case .gyen: return "GYEN"
+        }
     }
     
-    /// Get the version of a specific NUT if supported
-    public func getNUTVersion(_ nut: String) -> String? {
-        return nuts?[nut]
+    /// Whether this is a Bitcoin-related unit
+    public var isBitcoin: Bool {
+        return [.btc, .sat, .msat].contains(self)
     }
     
-    /// Get all supported NUTs
-    public func getSupportedNUTs() -> [String] {
-        return nuts?.keys.sorted() ?? []
+    /// Whether this is an ISO 4217 currency
+    public var isISO4217: Bool {
+        return [.usd, .eur, .gbp, .jpy, .bhd].contains(self)
     }
     
-    /// Check if mint supports basic operations (NUT-00, NUT-01, NUT-02)
-    public func supportsBasicOperations() -> Bool {
-        let basicNUTs = ["NUT-00", "NUT-01", "NUT-02"]
-        return basicNUTs.allSatisfy { supportsNUT($0) }
+    /// Whether this is a stablecoin
+    public var isStablecoin: Bool {
+        return [.usdt, .usdc, .eurc, .gyen].contains(self)
     }
 }
 
-/// Mint parameters structure
-public struct MintParameters: Codable, Sendable {
-    public let maxMessageLength: Int?
-    public let supportedNUTs: [String]?
-    
-    public init(
-        maxMessageLength: Int? = nil,
-        supportedNUTs: [String]? = nil
-    ) {
-        self.maxMessageLength = maxMessageLength
-        self.supportedNUTs = supportedNUTs
-    }
-    
-    private enum CodingKeys: String, CodingKey {
-        case maxMessageLength = "max_message_length"
-        case supportedNUTs = "supported_nuts"
-    }
-}
+// MARK: - Key Exchange Service
 
 @CashuActor
-public struct MintService: Sendable {
-    private let router: NetworkRouter<MintAPI>
+public struct KeyExchangeService: Sendable {
+    private let router: NetworkRouter<KeyExchangeAPI>
     
     public init() async {
-        self.router = NetworkRouter<MintAPI>(decoder: .cashuDecoder)
+        self.router = NetworkRouter<KeyExchangeAPI>(decoder: .cashuDecoder)
         self.router.delegate = CashuEnvironment.current.routerDelegate
     }
     
-    /// Get mint information from a mint URL.
-    ///
-    /// - parameter mintURL: (Required) The base URL of the mint (e.g., "https://mint.example.com")
-    /// - returns: a `MintInfo` object
-    public func getMintInfo(from mintURL: String) async throws -> MintInfo {
-        // Validate and normalize the mint URL
+    /// Get active keys from a mint URL (NUT-01: GET /v1/keys)
+    /// Returns only active keysets that the mint will sign outputs with
+    /// - parameter mintURL: The base URL of the mint
+    /// - returns: GetKeysResponse with active keysets and their keys
+    public func getKeys(from mintURL: String) async throws -> GetKeysResponse {
         let normalizedURL = try normalizeMintURL(mintURL)
-        
-        // Set the base URL for this request
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
-        return try await router.execute(.getMintInfo)
+        return try await router.execute(.getKeys)
     }
     
-    /// Check if a mint is available and responding.
-    ///
-    /// - parameter mintURL: (Required) The base URL of the mint
-    /// - returns: True if mint is available, false otherwise
-    public func isMintAvailable(_ mintURL: String) async -> Bool {
-        do {
-            _ = try await getMintInfo(from: mintURL)
-            return true
-        } catch {
-            return false
-        }
-    }
-    
-    /// Get mint information with retry logic.
-    ///
+    /// Get keys for a specific keyset (can be active or inactive)
     /// - parameters:
-    ///   - mintURL: (Required) The base URL of the mint
-    ///   - maxRetries: Maximum number of retry attempts (default: 3)
-    ///   - retryDelay: Delay between retries in seconds (default: 1.0)
-    /// - returns: a `MintInfo` object
-    public func getMintInfoWithRetry(
-        from mintURL: String,
-        maxRetries: Int = 3,
-        retryDelay: TimeInterval = 1.0
-    ) async throws -> MintInfo {
-        var lastError: Error?
+    ///   - mintURL: The base URL of the mint
+    ///   - keysetID: The ID of the keyset to fetch
+    /// - returns: GetKeysResponse with the requested keyset
+    public func getKeys(from mintURL: String, keysetID: String) async throws -> GetKeysResponse {
+        let normalizedURL = try normalizeMintURL(mintURL)
+        CashuEnvironment.current.setup(baseURL: normalizedURL)
         
-        for attempt in 0...maxRetries {
-            do {
-                return try await getMintInfo(from: mintURL)
-            } catch {
-                lastError = error
-                
-                if attempt < maxRetries {
-                    try await Task.sleep(nanoseconds: UInt64(retryDelay * 1_000_000_000))
-                }
-            }
+        guard KeysetID.validateKeysetID(keysetID) else {
+            throw CashuError.invalidKeysetID
         }
         
-        throw lastError ?? CashuError.mintUnavailable
+        return try await router.execute(.getKeysForKeyset(keysetID))
     }
     
-    // MARK: - Validation Methods (Non-isolated)
+    /// Get active keysets with specific currency unit
+    /// - parameters:
+    ///   - mintURL: The base URL of the mint
+    ///   - unit: The currency unit to filter by
+    /// - returns: Array of keysets with the specified unit
+    public func getActiveKeys(from mintURL: String, unit: CurrencyUnit) async throws -> [Keyset] {
+        let response = try await getKeys(from: mintURL)
+        return response.keysets.filter { $0.unit == unit.rawValue }
+    }
     
-    /// Validate mint information
-    /// - Parameter info: The mint information to validate
-    /// - Returns: True if valid, false otherwise
-    public nonisolated func validateMintInfo(_ info: MintInfo) -> Bool {
+    /// Get all supported currency units from a mint
+    /// - parameter mintURL: The base URL of the mint
+    /// - returns: Set of supported currency units
+    public func getSupportedUnits(from mintURL: String) async throws -> Set<String> {
+        let response = try await getKeys(from: mintURL)
+        return Set(response.keysets.map { $0.unit })
+    }
+    
+    /// Check if a mint supports a specific currency unit
+    /// - parameters:
+    ///   - mintURL: The base URL of the mint
+    ///   - unit: The currency unit to check
+    /// - returns: True if the mint supports the unit
+    public func supportsUnit(_ unit: CurrencyUnit, at mintURL: String) async throws -> Bool {
+        let supportedUnits = try await getSupportedUnits(from: mintURL)
+        return supportedUnits.contains(unit.rawValue)
+    }
+    
+    /// Get the highest denomination key for a specific unit
+    /// - parameters:
+    ///   - mintURL: The base URL of the mint
+    ///   - unit: The currency unit
+    /// - returns: The highest amount key available, or nil if unit not supported
+    public func getHighestDenomination(from mintURL: String, unit: CurrencyUnit) async throws -> Int? {
+        let keysets = try await getActiveKeys(from: mintURL, unit: unit)
+        
+        let maxAmounts = keysets.map { keyset in
+            keyset.getSupportedAmounts().max() ?? 0
+        }
+        
+        return maxAmounts.max()
+    }
+    
+    /// Get the lowest denomination key for a specific unit
+    /// - parameters:
+    ///   - mintURL: The base URL of the mint
+    ///   - unit: The currency unit
+    /// - returns: The lowest amount key available, or nil if unit not supported
+    public func getLowestDenomination(from mintURL: String, unit: CurrencyUnit) async throws -> Int? {
+        let keysets = try await getActiveKeys(from: mintURL, unit: unit)
+        
+        let minAmounts = keysets.compactMap { keyset in
+            keyset.getSupportedAmounts().min()
+        }
+        
+        return minAmounts.min()
+    }
+    
+    // MARK: - Validation Methods
+    
+    /// Validate a keyset according to NUT-01 requirements
+    public nonisolated func validateKeyset(_ keyset: Keyset) -> Bool {
         // Basic validation
-        guard !info.pubkey.isEmpty else { return false }
-        
-        // Validate pubkey format (should be a valid hex string)
-        guard Data(hexString: info.pubkey) != nil else { return false }
-        
-        // Validate version if present
-        if let version = info.version, version.isEmpty { return false }
-        
-        // Validate contact array if present
-        if let contact = info.contact {
-            for contactItem in contact {
-                if contactItem.isEmpty { return false }
-            }
-        }
-        
-        // Validate nuts dictionary if present
-        if let nuts = info.nuts {
-            for (key, value) in nuts {
-                if key.isEmpty || value.isEmpty { return false }
-            }
-        }
-        
-        return true
-    }
-    
-    /// Validate mint URL format
-    /// - Parameter mintURL: The URL to validate
-    /// - Returns: True if valid, false otherwise
-    public nonisolated func validateMintURL(_ mintURL: String) -> Bool {
-        guard let url = URL(string: mintURL) else { return false }
-        
-        // Must have a scheme (http or https)
-        guard let scheme = url.scheme, ["http", "https"].contains(scheme.lowercased()) else {
+        guard !keyset.id.isEmpty,
+              !keyset.unit.isEmpty,
+              !keyset.keys.isEmpty else {
             return false
         }
         
-        // Must have a host
-        guard let host = url.host, !host.isEmpty else { return false }
+        // Validate keyset ID format
+        guard KeysetID.validateKeysetID(keyset.id) else {
+            return false
+        }
+        
+        // Validate that all keys are compressed secp256k1 public keys (66 hex chars)
+        for (amountStr, publicKey) in keyset.keys {
+            // Validate amount is a positive integer
+            guard let amount = Int(amountStr), amount > 0 else {
+                return false
+            }
+            
+            // Validate public key format (compressed secp256k1: 66 hex chars)
+            guard publicKey.isValidHex && publicKey.count == 66 else {
+                return false
+            }
+            
+            // Validate public key starts with 02 or 03 (compressed format)
+            guard publicKey.hasPrefix("02") || publicKey.hasPrefix("03") else {
+                return false
+            }
+        }
         
         return true
     }
     
-    // MARK: - Utility Methods (Non-isolated)
+    /// Validate currency unit according to NUT-01 specification
+    public nonisolated func validateCurrencyUnit(_ unit: String) -> Bool {
+        // Check if it's a known currency unit
+        if CurrencyUnit(rawValue: unit) != nil {
+            return true
+        }
+        
+        // Allow other ISO 4217 codes or custom units
+        // Basic validation: non-empty, lowercase, alphanumeric
+        return !unit.isEmpty && 
+               unit == unit.lowercased() && 
+               unit.allSatisfy { $0.isLetter || $0.isNumber }
+    }
     
-    /// Normalize a mint URL (add scheme if missing, remove trailing slash)
-    /// - Parameter mintURL: The URL to normalize
-    /// - Returns: Normalized URL
+    /// Validate that amounts represent minor units correctly
+    public nonisolated func validateAmountForUnit(_ amount: Int, unit: String) -> Bool {
+        guard amount > 0 else { return false }
+        
+        // For known currency units, validate according to their minor unit
+        if CurrencyUnit(rawValue: unit) != nil {
+            // Amount should be in minor units as per NUT-01
+            // All amounts in keysets represent minor units
+            return true
+        }
+        
+        // For unknown units, accept any positive amount
+        return true
+    }
+    
+    // MARK: - Utility Methods
+    
+    /// Normalize mint URL
     private nonisolated func normalizeMintURL(_ mintURL: String) throws -> String {
         var normalizedURL = mintURL.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Add https:// if no scheme is present
         if !normalizedURL.contains("://") {
             normalizedURL = "https://" + normalizedURL
         }
         
-        // Remove trailing slash
         if normalizedURL.hasSuffix("/") {
             normalizedURL = String(normalizedURL.dropLast())
         }
         
-        // Validate the normalized URL
-        guard validateMintURL(normalizedURL) else {
+        guard let url = URL(string: normalizedURL),
+              let scheme = url.scheme,
+              ["http", "https"].contains(scheme.lowercased()),
+              let host = url.host,
+              !host.isEmpty else {
             throw CashuError.invalidMintURL
         }
         
         return normalizedURL
     }
     
-    /// Create a mock mint info for testing
-    /// - Parameter pubkey: The mint's public key
-    /// - Returns: Mock mint information
-    public nonisolated func createMockMintInfo(pubkey: String) -> MintInfo {
-        return MintInfo(
-            name: "Test Mint",
-            pubkey: pubkey,
-            version: "1.0.0",
-            description: "A test mint for development",
-            descriptionLong: "This is a test mint used for development and testing purposes",
-            contact: ["admin@testmint.com"],
-            nuts: [
-                "NUT-00": "1.0",
-                "NUT-01": "1.0",
-                "NUT-02": "1.0",
-                "NUT-03": "1.0"
-            ],
-            motd: "Welcome to Test Mint!",
-            parameter: MintParameters(
-                maxMessageLength: 1024,
-                supportedNUTs: ["NUT-00", "NUT-01", "NUT-02", "NUT-03"]
-            )
-        )
+    /// Convert amount from whole units to minor units
+    /// Example: 1.23 USD -> 123 (cents)
+    public nonisolated func convertToMinorUnits(_ amount: Double, unit: CurrencyUnit) -> Int {
+        let multiplier = pow(10.0, Double(unit.minorUnit))
+        return Int(amount * multiplier)
     }
     
-    /// Compare two mint info objects for compatibility
-    /// - Parameters:
-    ///   - info1: First mint info
-    ///   - info2: Second mint info
-    /// - Returns: True if compatible, false otherwise
-    public nonisolated func areMintsCompatible(_ info1: MintInfo, _ info2: MintInfo) -> Bool {
-        // Check if both mints support basic operations
-        guard info1.supportsBasicOperations() && info2.supportsBasicOperations() else {
-            return false
-        }
-        
-        // Check for common supported NUTs
-        let nuts1 = Set(info1.getSupportedNUTs())
-        let nuts2 = Set(info2.getSupportedNUTs())
-        let commonNUTs = nuts1.intersection(nuts2)
-        
-        // Must have at least basic NUTs in common
-        let basicNUTs = Set(["NUT-00", "NUT-01", "NUT-02"])
-        return !basicNUTs.isDisjoint(with: commonNUTs)
+    /// Convert amount from minor units to whole units
+    /// Example: 123 cents -> 1.23 USD
+    public nonisolated func convertFromMinorUnits(_ amount: Int, unit: CurrencyUnit) -> Double {
+        let divisor = pow(10.0, Double(unit.minorUnit))
+        return Double(amount) / divisor
     }
 }
 
-enum MintAPI {
-    case getMintInfo
+// MARK: - API Endpoints
+
+enum KeyExchangeAPI {
+    case getKeys
+    case getKeysForKeyset(String)
 }
 
-extension MintAPI: EndpointType {
+extension KeyExchangeAPI: EndpointType {
     public var baseURL: URL {
-        guard let baseURL = CashuEnvironment.current.baseURL, let url = URL(string: baseURL) else { fatalError("The baseURL for the mint must be set") }
+        guard let baseURL = CashuEnvironment.current.baseURL, 
+              let url = URL(string: baseURL) else { 
+            fatalError("The baseURL for the mint must be set") 
+        }
         return url
     }
     
     var path: String {
         switch self {
-        case .getMintInfo: "/info"
+        case .getKeys:
+            return "/v1/keys"
+        case .getKeysForKeyset(let keysetID):
+            return "/v1/keys/\(keysetID)"
         }
     }
     
     var httpMethod: HTTPMethod {
         switch self {
-        case .getMintInfo: .get
+        case .getKeys, .getKeysForKeyset:
+            return .get
         }
     }
     
     var task: HTTPTask {
         switch self {
-        case .getMintInfo:
+        case .getKeys, .getKeysForKeyset:
             return .request
         }
     }
     
     var headers: HTTPHeaders? {
-        ["Accept": "application/json"]
+        return ["Accept": "application/json"]
     }
-} 
+}
+
+// MARK: - Compatibility Extensions
+
+/// Extension to provide backward compatibility with existing KeysetService from NUT-02
+extension KeyExchangeService {
+    /// Alias for NUT-02 compatibility - same as getKeys
+    public func getKeysResponse(from mintURL: String) async throws -> GetKeysResponse {
+        return try await getKeys(from: mintURL)
+    }
+    
+    /// Get active keysets (for NUT-02 compatibility)
+    public func getActiveKeysets(from mintURL: String) async throws -> [Keyset] {
+        let response = try await getKeys(from: mintURL)
+        return response.keysets
+    }
+}
