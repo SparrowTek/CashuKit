@@ -281,9 +281,8 @@ enum MintAPI {
 
 extension MintAPI: EndpointType {
     public var baseURL: URL {
-        // This will be handled by the router when it executes
-        // The actual base URL is set in the service before making the request
-        return URL(string: "https://placeholder.com")!
+        guard let baseURL = CashuEnvironment.current.baseURL, let url = URL(string: baseURL) else { fatalError("The baseURL for the mint must be set") }
+        return url
     }
     
     var path: String {
@@ -306,6 +305,6 @@ extension MintAPI: EndpointType {
     }
     
     var headers: HTTPHeaders? {
-        return ["Accept": "application/json"]
+        ["Accept": "application/json"]
     }
 } 
