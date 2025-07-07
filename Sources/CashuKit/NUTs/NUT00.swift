@@ -259,11 +259,37 @@ public struct Wallet {
         return UnblindedToken(secret: blindingData.secret, signature: signatureData)
     }
     
-    /// Verify a token locally (same logic as mint verification)
-    public static func verifyToken(_ token: UnblindedToken, mintPublicKey: P256K.KeyAgreement.PublicKey) throws -> Bool {
-        // Note: This method can't work without the mint's private key
-        // Token verification must be done by the mint
-        throw CashuError.verificationFailed
+    /// Verify a token's mathematical validity (without the mint's private key)
+    /// Note: This only validates the token structure, not whether it's actually valid
+    /// For actual verification, the token must be sent to the mint
+    public static func validateTokenStructure(_ token: UnblindedToken) -> Bool {
+        // Basic validation - check that signature is a valid compressed public key
+        guard let signatureData = Data(hexString: token.signature.hexString),
+              signatureData.count == 33,
+              signatureData.first == 0x02 || signatureData.first == 0x03 else {
+            return false
+        }
+        
+        // Check that secret is not empty
+        guard !token.secret.isEmpty else {
+            return false
+        }
+        
+        // Try to parse signature as a valid public key
+        do {
+            _ = try P256K.KeyAgreement.PublicKey(dataRepresentation: signatureData, format: .compressed)
+            return true
+        } catch {
+            return false
+        }
+    }
+    
+    /// Verify a token locally using mint's public key
+    /// This simulates what the mint would do: check k*hash_to_curve(x) == C
+    /// WARNING: This requires knowing the mint's private key, which wallets don't have
+    public static func verifyTokenWithMintKey(_ token: UnblindedToken, mintPrivateKey: P256K.KeyAgreement.PrivateKey) throws -> Bool {
+        let mint = try Mint(privateKey: mintPrivateKey)
+        return try mint.verifyToken(secret: token.secret, signature: token.signature)
     }
 }
 

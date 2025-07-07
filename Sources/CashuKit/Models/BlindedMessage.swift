@@ -6,7 +6,13 @@
 //
 
 public struct BlindedMessage: CashuCodabale {
-   public let id: String
-   public let amount: Int
-   public let B_: String
+    public let amount: Int
+    public let id: String
+    public let B_: String
+    
+    public init(amount: Int, id: String, B_: String) {
+        self.amount = amount
+        self.id = id
+        self.B_ = B_
+    }
 }

@@ -6,6 +6,11 @@
 //
 
 public struct TokenEntry: CashuCodabale {
-   public let mint: String
-   public let proofs: [Proof]
+    public let mint: String
+    public let proofs: [Proof]
+    
+    public init(mint: String, proofs: [Proof]) {
+        self.mint = mint
+        self.proofs = proofs
+    }
 }

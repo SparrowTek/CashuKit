@@ -6,7 +6,13 @@
 //
 
 public struct CashuToken: CashuCodabale {
-   public let token: [TokenEntry]
-   public let unit: String?
-   public let memo: String?
+    public let token: [TokenEntry]
+    public let unit: String?
+    public let memo: String?
+    
+    public init(token: [TokenEntry], unit: String? = nil, memo: String? = nil) {
+        self.token = token
+        self.unit = unit
+        self.memo = memo
+    }
 }

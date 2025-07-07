@@ -39,4 +39,23 @@ public enum CashuError: Error {
     case nutNotImplemented(String)
     case invalidNutVersion(String)
     case invalidKeysetID
+    
+    // HTTP API errors (following NUT-00 error format)
+    case httpError(detail: String, code: Int)
+}
+
+// MARK: - HTTP Error Response (NUT-00 Specification)
+
+/// HTTP error response structure as defined in NUT-00
+/// Used when mints respond with HTTP status code 400 and error details
+public struct CashuHTTPError: Codable, Error {
+    /// Error message
+    public let detail: String
+    /// Error code
+    public let code: Int
+    
+    public init(detail: String, code: Int) {
+        self.detail = detail
+        self.code = code
+    }
 } 
