@@ -38,4 +38,5 @@ public enum CashuError: Error {
     // NUT-specific errors
     case nutNotImplemented(String)
     case invalidNutVersion(String)
+    case invalidKeysetID
 } 
