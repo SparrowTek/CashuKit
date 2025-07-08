@@ -10,57 +10,10 @@ import Foundation
 
 // MARK: - Mint Information Service
 
-// Helper for decoding/encoding Any values
-private struct AnyCodableValue: Codable {
-    let value: Any
-    
-    init(_ value: Any) {
-        self.value = value
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        
-        if let string = try? container.decode(String.self) {
-            value = string
-        } else if let int = try? container.decode(Int.self) {
-            value = int
-        } else if let bool = try? container.decode(Bool.self) {
-            value = bool
-        } else if let dict = try? container.decode([String: AnyCodableValue].self) {
-            value = dict.mapValues { $0.value }
-        } else if let array = try? container.decode([AnyCodableValue].self) {
-            value = array.map { $0.value }
-        } else {
-            throw DecodingError.typeMismatch(AnyCodableValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Cannot decode value"))
-        }
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        
-        if let string = value as? String {
-            try container.encode(string)
-        } else if let int = value as? Int {
-            try container.encode(int)
-        } else if let bool = value as? Bool {
-            try container.encode(bool)
-        } else if let dict = value as? [String: Any] {
-            let codableDict = dict.mapValues { AnyCodableValue($0) }
-            try container.encode(codableDict)
-        } else if let array = value as? [Any] {
-            let codableArray = array.map { AnyCodableValue($0) }
-            try container.encode(codableArray)
-        } else {
-            throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Cannot encode value"))
-        }
-    }
-}
-
 /// Represents a value in the nuts dictionary that can be either a string or a dictionary
-public enum NutValue: CashuCodabale, @unchecked Sendable {
+public enum NutValue: CashuCodabale {
     case string(String)
-    case dictionary([String: SendableValue])
+    case dictionary([String: AnyCodable])
     
     /// Get dictionary value if this is a dictionary case
     public var dictionaryValue: [String: Any]? {
@@ -83,10 +36,10 @@ public enum NutValue: CashuCodabale, @unchecked Sendable {
         
         if let string = try? container.decode(String.self) {
             self = .string(string)
-        } else if let anyValue = try? container.decode(AnyCodableValue.self) {
-            if let dictionary = anyValue.value as? [String: Any] {
-                let sendableDict = dictionary.compactMapValues { SendableValue(anyValue: $0) }
-                self = .dictionary(sendableDict)
+        } else if let anyValue = try? container.decode(AnyCodable.self) {
+            if let dictionary = anyValue.dictionaryValue {
+                let codableDict = dictionary.compactMapValues { AnyCodable(anyValue: $0) }
+                self = .dictionary(codableDict)
             } else {
                 throw DecodingError.typeMismatch(NutValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Cannot decode NutValue"))
             }
@@ -102,55 +55,7 @@ public enum NutValue: CashuCodabale, @unchecked Sendable {
         case .string(let string):
             try container.encode(string)
         case .dictionary(let dictionary):
-            let anyDict = dictionary.mapValues { $0.anyValue }
-            let anyCodable = AnyCodableValue(anyDict)
-            try container.encode(anyCodable)
-        }
-    }
-}
-
-/// A Sendable wrapper for common value types
-public enum SendableValue: Sendable {
-    case string(String)
-    case int(Int)
-    case bool(Bool)
-    case array([SendableValue])
-    case dictionary([String: SendableValue])
-    
-    public var anyValue: Any {
-        switch self {
-        case .string(let value): return value
-        case .int(let value): return value
-        case .bool(let value): return value
-        case .array(let values): return values.map { $0.anyValue }
-        case .dictionary(let dict): return dict.mapValues { $0.anyValue }
-        }
-    }
-    
-    public init?(anyValue: Any) {
-        switch anyValue {
-        case let string as String:
-            self = .string(string)
-        case let int as Int:
-            self = .int(int)
-        case let bool as Bool:
-            self = .bool(bool)
-        case let array as [Any]:
-            let sendableArray = array.compactMap { SendableValue(anyValue: $0) }
-            if sendableArray.count == array.count {
-                self = .array(sendableArray)
-            } else {
-                return nil
-            }
-        case let dict as [String: Any]:
-            let sendableDict = dict.compactMapValues { SendableValue(anyValue: $0) }
-            if sendableDict.count == dict.count {
-                self = .dictionary(sendableDict)
-            } else {
-                return nil
-            }
-        default:
-            return nil
+            try container.encode(AnyCodable.dictionary(dictionary))
         }
     }
 }
@@ -241,7 +146,7 @@ public struct MintInfo: CashuCodabale {
             
             let minAmount = methodDict["min_amount"] as? Int
             let maxAmount = methodDict["max_amount"] as? Int
-            let options = methodDict["options"] as? [String: String]
+            let options = (methodDict["options"] as? [String: Any])?.compactMapValues { AnyCodable(anyValue: $0) }
             
             return MintMethodSetting(
                 method: method,
@@ -448,7 +353,7 @@ public struct MintInfoService: Sendable {
                     ]),
                     "disabled": .bool(false)
                 ]),
-                "NUT-05": "1.0"
+                "NUT-05": .string("1.0")
             ],
             motd: "Welcome to Test Mint!",
             parameter: MintParameters(

@@ -161,9 +161,9 @@ public struct MintMethodSetting: CashuCodabale {
     public let unit: String
     public let minAmount: Int?
     public let maxAmount: Int?
-    public let options: [String: String]?
+    public let options: [String: AnyCodable]?
     
-    public init(method: String, unit: String, minAmount: Int? = nil, maxAmount: Int? = nil, options: [String: String]? = nil) {
+    public init(method: String, unit: String, minAmount: Int? = nil, maxAmount: Int? = nil, options: [String: AnyCodable]? = nil) {
         self.method = method
         self.unit = unit
         self.minAmount = minAmount

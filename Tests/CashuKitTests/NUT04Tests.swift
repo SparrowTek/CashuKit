@@ -335,9 +335,8 @@ struct NUT04Tests {
     // MARK: - Sendable Conformance Tests
     
     @Test("All NUT-04 types are Sendable")
-    func testSendableConformance() {
+    func testSendableConformance() async {
         // This test ensures all types properly conform to Sendable
-        // without using @unchecked Sendable
         
         let request = MintQuoteRequest(unit: "sat", amount: 100)
         let response = MintQuoteResponse(quote: "test", request: "test", unit: "sat")

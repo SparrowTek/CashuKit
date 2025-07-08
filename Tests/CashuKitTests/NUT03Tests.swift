@@ -182,23 +182,15 @@ struct NUT03Tests {
     // MARK: - SwapService Tests
     
     @Test
-    func swapServiceInitialization() async {
-        let service = await SwapService()
-        // Service is successfully created
-    }
-    
-    @Test
     func swapValidationMethods() async {
         let service = await SwapService()
         
         // Test proof validation - create valid proofs
         let validProof = Proof(amount: 64, id: "0088553333AABBCC", secret: "valid_secret", C: "valid_signature")
-        let invalidProof = Proof(amount: 0, id: "", secret: "", C: "")
         
         let blindedMessage = BlindedMessage(amount: 64, id: "0088553333AABBCC", B_: "02abcd...")
         
         let validRequest = PostSwapRequest(inputs: [validProof], outputs: [blindedMessage])
-        let invalidRequest = PostSwapRequest(inputs: [invalidProof], outputs: [blindedMessage])
         
         // Test balance validation
         let keysetInfo = KeysetInfo(id: "0088553333AABBCC", unit: "sat", active: true, inputFeePpk: 1000)
@@ -254,25 +246,10 @@ struct NUT03Tests {
         }
     }
     
-    // MARK: - API Endpoint Tests
-    
-    @Test
-    func swapAPIEndpoint() {
-        let proof = Proof(amount: 64, id: "keyset123", secret: "secret", C: "signature")
-        let blindedMessage = BlindedMessage(amount: 64, id: "keyset123", B_: "02abcd...")
-        let request = PostSwapRequest(inputs: [proof], outputs: [blindedMessage])
-        
-        let endpoint = SwapAPI.swap(request)
-        
-        // These would normally be tested with actual network setup
-        // For now, just verify the endpoint exists and can be created
-        // #expect(endpoint != nil) // This would need proper comparison
-    }
-    
     // MARK: - Convenience Extension Tests
     
     @Test
-    func convenienceExtensions() {
+    func convenienceExtensions() async throws {
         // Test that convenience methods exist and have correct signatures
         // These would need actual network setup to test fully
         
@@ -280,11 +257,9 @@ struct NUT03Tests {
         
         // Verify method signatures exist (compilation test)
         let _ = { (service: SwapService) in
-            Task {
-                // These would throw network errors in tests, but we're just checking compilation
-                let _ = try await service.swapToSend(from: [proof], amount: 100, at: "https://mint.example.com")
-                let _ = try await service.swapToReceive(proofs: [proof], at: "https://mint.example.com")
-            }
+            // These would throw network errors in tests, but we're just checking compilation
+            let _ = try await service.swapToSend(from: [proof], amount: 100, at: "https://mint.example.com")
+            let _ = try await service.swapToReceive(proofs: [proof], at: "https://mint.example.com")
         }
     }
     
@@ -300,7 +275,6 @@ struct NUT03Tests {
         
         // Invalid proof amounts
         let zeroAmountProof = Proof(amount: 0, id: "keyset123", secret: "secret", C: "signature")
-        let negativeAmountProof = Proof(amount: -10, id: "keyset123", secret: "secret", C: "signature")
         let blindedMessage = BlindedMessage(amount: 10, id: "keyset123", B_: "02abcd...")
         
         let zeroAmountRequest = PostSwapRequest(inputs: [zeroAmountProof], outputs: [blindedMessage])

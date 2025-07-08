@@ -494,7 +494,7 @@ struct NUT05Tests {
     // MARK: - Convenience Extension Tests
     
     @Test
-    func convenienceExtensions() {
+    func convenienceExtensions() async throws {
         // Test that convenience methods exist and have correct signatures
         // These would need actual network setup to test fully
         
@@ -502,30 +502,28 @@ struct NUT05Tests {
         
         // Verify method signatures exist (compilation test)
         let _ = { (service: MeltService) in
-            Task {
-                // These would throw network errors in tests, but we're just checking compilation
-                let _ = try await service.meltToPayment(
-                    paymentRequest: "lnbc1000n1p...",
-                    method: .bolt11,
-                    unit: "sat",
-                    from: [proof],
-                    at: "https://mint.example.com"
-                )
-                
-                let _ = try await service.isQuoteReady(
-                    quoteID: "quote123",
-                    method: .bolt11,
-                    at: "https://mint.example.com"
-                )
-                
-                let _ = try await service.waitForQuotePayment(
-                    quoteID: "quote123",
-                    method: .bolt11,
-                    at: "https://mint.example.com",
-                    timeout: 60.0,
-                    pollInterval: 2.0
-                )
-            }
+            // These would throw network errors in tests, but we're just checking compilation
+            let _ = try await service.meltToPayment(
+                paymentRequest: "lnbc1000n1p...",
+                method: .bolt11,
+                unit: "sat",
+                from: [proof],
+                at: "https://mint.example.com"
+            )
+            
+            let _ = try await service.isQuoteReady(
+                quoteID: "quote123",
+                method: .bolt11,
+                at: "https://mint.example.com"
+            )
+            
+            let _ = try await service.waitForQuotePayment(
+                quoteID: "quote123",
+                method: .bolt11,
+                at: "https://mint.example.com",
+                timeout: 60.0,
+                pollInterval: 2.0
+            )
         }
     }
     
