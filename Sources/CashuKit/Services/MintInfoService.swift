@@ -240,12 +240,13 @@ public struct MintInfoService: Sendable {
                 "NUT-00": "1.0",
                 "NUT-01": "1.0",
                 "NUT-02": "1.0",
-                "NUT-03": "1.0"
+                "NUT-03": "1.0",
+                "NUT-05": "1.0"
             ],
             motd: "Welcome to Test Mint!",
             parameter: MintParameters(
                 maxMessageLength: 1024,
-                supportedNUTs: ["NUT-00", "NUT-01", "NUT-02", "NUT-03"]
+                supportedNUTs: ["NUT-00", "NUT-01", "NUT-02", "NUT-03", "NUT-05"]
             )
         )
     }
