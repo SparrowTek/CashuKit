@@ -301,23 +301,16 @@ public struct CashuBDHKEProtocol {
     /// Execute the complete BDHKE protocol
     /// This demonstrates the full flow from NUT-00
     public static func executeProtocol(secret: String) throws -> (token: UnblindedToken, isValid: Bool) {
-        print("=== Executing Cashu BDHKE Protocol (NUT-00) ===\n")
-        
         // Setup: Mint publishes public key K = k*G
         let mint = try Mint()
         let mintPublicKey = mint.keypair.publicKey
-        print("1. Mint publishes public key K: \(mintPublicKey.dataRepresentation.hexString)")
         
         // Step 1: Wallet picks secret x and computes Y = hash_to_curve(x)
         //         Wallet sends B_ = Y + r*G to mint (blinding)
         let (blindingData, blindedMessage) = try Wallet.createBlindedMessage(secret: secret)
-        print("2. Wallet creates secret x: \(secret)")
-        print("   Wallet computes Y = hash_to_curve(x)")
-        print("   Wallet sends B_ = Y + r*G: \(blindedMessage.hexString)")
         
         // Step 2: Mint signs the blinded message and sends back C_ = k*B_ (signing)
         let blindedSignature = try mint.signBlindedMessage(blindedMessage)
-        print("3. Mint signs and returns C_ = k*B_: \(blindedSignature.hexString)")
         
         // Step 3: Wallet unblinds the signature: C = C_ - r*K (unblinding)
         let token = try Wallet.unblindSignature(
@@ -325,13 +318,10 @@ public struct CashuBDHKEProtocol {
             blindingData: blindingData,
             mintPublicKey: mintPublicKey
         )
-        print("4. Wallet unblinds to get C = C_ - r*K: \(token.signature.hexString)")
         
         // Step 4: Verification - Mint checks k*hash_to_curve(x) == C
         let isValid = try mint.verifyToken(secret: token.secret, signature: token.signature)
-        print("5. Mint verifies k*hash_to_curve(x) == C: \(isValid)")
         
-        print("\n=== Protocol Complete ===")
         return (token, isValid)
     }
 } 
