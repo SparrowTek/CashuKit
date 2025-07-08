@@ -437,7 +437,7 @@ public struct MintInfoService: Sendable {
                 "NUT-01": .string("1.0"),
                 "NUT-02": .string("1.0"),
                 "NUT-03": .string("1.0"),
-                "4": .dictionary([
+                "NUT-04": .dictionary([
                     "methods": .array([
                         .dictionary([
                             "method": .string("bolt11"),
@@ -447,12 +447,13 @@ public struct MintInfoService: Sendable {
                         ])
                     ]),
                     "disabled": .bool(false)
-                ])
+                ]),
+                "NUT-05": "1.0"
             ],
             motd: "Welcome to Test Mint!",
             parameter: MintParameters(
                 maxMessageLength: 1024,
-                supportedNUTs: ["NUT-00", "NUT-01", "NUT-02", "NUT-03"]
+                supportedNUTs: ["NUT-00", "NUT-01", "NUT-02", "NUT-03", "NUT-05"]
             )
         )
     }
