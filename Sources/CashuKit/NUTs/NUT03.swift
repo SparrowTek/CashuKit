@@ -17,7 +17,7 @@ import Foundation
 // MARK: - Request/Response Structures
 
 /// Request structure for POST /v1/swap
-public struct PostSwapRequest: Codable, CashuEncodable {
+public struct PostSwapRequest: CashuCodabale {
     public let inputs: [Proof]
     public let outputs: [BlindedMessage]
     
@@ -71,7 +71,7 @@ public struct PostSwapRequest: Codable, CashuEncodable {
 }
 
 /// Response structure for POST /v1/swap
-public struct PostSwapResponse: Codable, Sendable {
+public struct PostSwapResponse: CashuCodabale {
     public let signatures: [BlindSignature]
     
     public init(signatures: [BlindSignature]) {

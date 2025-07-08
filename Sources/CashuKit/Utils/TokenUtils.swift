@@ -93,18 +93,18 @@ public struct CashuTokenUtils {
     // MARK: - V4 Token Serialization (Space-efficient CBOR format)
     
     /// V4 Token structure with shortened keys
-    private struct TokenV4: Codable {
+    private struct TokenV4: CashuCodabale {
         let m: String // mint URL
         let u: String // unit
         let d: String? // memo (optional)
         let t: [KeysetGroup] // token groups by keyset
         
-        struct KeysetGroup: Codable {
+        struct KeysetGroup: CashuCodabale {
             let i: Data // keyset ID (as bytes)
             let p: [ProofV4] // proofs for this keyset
         }
         
-        struct ProofV4: Codable {
+        struct ProofV4: CashuCodabale {
             let a: Int // amount
             let s: String // secret
             let c: Data // signature (as bytes)

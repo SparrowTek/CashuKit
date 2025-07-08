@@ -11,7 +11,7 @@ import Foundation
 // MARK: - Mint Information Service
 
 /// Mint information response structure
-public struct MintInfo: Codable, Sendable {
+public struct MintInfo: CashuCodabale {
     public let name: String?
     public let pubkey: String
     public let version: String?
@@ -67,7 +67,7 @@ public struct MintInfo: Codable, Sendable {
 }
 
 /// Mint parameters structure
-public struct MintParameters: Codable, Sendable {
+public struct MintParameters: CashuCodabale {
     public let maxMessageLength: Int?
     public let supportedNUTs: [String]?
     

@@ -16,7 +16,7 @@ import CryptoKit
 /// This NUT defines the keyset and fee structure for Cashu mints
 
 /// Keyset information structure
-public struct KeysetInfo: Codable, Sendable {
+public struct KeysetInfo: CashuCodabale {
     public let id: String
     public let unit: String
     public let active: Bool
@@ -38,7 +38,7 @@ public struct KeysetInfo: Codable, Sendable {
 }
 
 /// Keyset with public keys
-public struct Keyset: Codable, Sendable {
+public struct Keyset: CashuCodabale {
     public let id: String
     public let unit: String
     public let keys: [String: String] // amount -> public key
@@ -68,7 +68,7 @@ public struct Keyset: Codable, Sendable {
 }
 
 /// Response structure for GET /v1/keysets
-public struct GetKeysetsResponse: Codable, Sendable {
+public struct GetKeysetsResponse: CashuCodabale {
     public let keysets: [KeysetInfo]
     
     public init(keysets: [KeysetInfo]) {
@@ -77,7 +77,7 @@ public struct GetKeysetsResponse: Codable, Sendable {
 }
 
 /// Response structure for GET /v1/keys and GET /v1/keys/{keyset_id}
-public struct GetKeysResponse: Codable, Sendable {
+public struct GetKeysResponse: CashuCodabale {
     public let keysets: [Keyset]
     
     public init(keysets: [Keyset]) {

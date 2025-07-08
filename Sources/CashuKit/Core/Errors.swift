@@ -48,7 +48,7 @@ public enum CashuError: Error {
 
 /// HTTP error response structure as defined in NUT-00
 /// Used when mints respond with HTTP status code 400 and error details
-public struct CashuHTTPError: Codable, Error {
+public struct CashuHTTPError: CashuCodabale, Error {
     /// Error message
     public let detail: String
     /// Error code

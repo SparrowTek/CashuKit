@@ -16,7 +16,7 @@ import Foundation
 // MARK: - Currency Units
 
 /// Supported currency units as defined in NUT-01
-public enum CurrencyUnit: String, CaseIterable, Codable {
+public enum CurrencyUnit: String, CaseIterable, CashuCodabale {
     case btc = "btc"          // Bitcoin (Minor Unit: 8)
     case sat = "sat"          // Bitcoin's Minor Unit
     case msat = "msat"        // 1/1000th of a sat

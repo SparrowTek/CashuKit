@@ -30,7 +30,7 @@ enum ParameterEncoding: Sendable {
             case .jsonEncoding(let parameters):
                 try JSONParameterEncoder().encode(urlRequest: &urlRequest, with: parameters)
             case .jsonDataEncoding(let data):
-                try JSONParameterEncoder().encode(urlRequest: &urlRequest, with: data)
+                JSONParameterEncoder().encode(urlRequest: &urlRequest, with: data)
             case .jsonEncodableEncoding(let encodable):
                 try JSONParameterEncoder().encode(urlRequest: &urlRequest, with: encodable)
             case .urlAndJsonEncoding(let urlParameters, let bodyParameters):

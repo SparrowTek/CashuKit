@@ -17,7 +17,7 @@ struct JSONParameterEncoder: ParameterEncoder {
         }
     }
     
-    func encode(urlRequest: inout URLRequest, with encodable: Encodable) throws {
+    func encode(urlRequest: inout URLRequest, with encodable: CashuEncodable) throws {
         do {
             let data = try encodable.toJSONData()
             encode(urlRequest: &urlRequest, with: data)
@@ -26,8 +26,10 @@ struct JSONParameterEncoder: ParameterEncoder {
         }
     }
     
-    func encode(urlRequest: inout URLRequest, with data: Data) {
-        urlRequest.httpBody = data
+    func encode(urlRequest: inout URLRequest, with data: Data?) {
+        if let data {
+            urlRequest.httpBody = data
+        }
         
         if urlRequest.value(forHTTPHeaderField: "Content-Type") == nil {
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
