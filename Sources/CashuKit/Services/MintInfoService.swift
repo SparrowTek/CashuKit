@@ -10,6 +10,152 @@ import Foundation
 
 // MARK: - Mint Information Service
 
+// Helper for decoding/encoding Any values
+private struct AnyCodableValue: Codable {
+    let value: Any
+    
+    init(_ value: Any) {
+        self.value = value
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        
+        if let string = try? container.decode(String.self) {
+            value = string
+        } else if let int = try? container.decode(Int.self) {
+            value = int
+        } else if let bool = try? container.decode(Bool.self) {
+            value = bool
+        } else if let dict = try? container.decode([String: AnyCodableValue].self) {
+            value = dict.mapValues { $0.value }
+        } else if let array = try? container.decode([AnyCodableValue].self) {
+            value = array.map { $0.value }
+        } else {
+            throw DecodingError.typeMismatch(AnyCodableValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Cannot decode value"))
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        
+        if let string = value as? String {
+            try container.encode(string)
+        } else if let int = value as? Int {
+            try container.encode(int)
+        } else if let bool = value as? Bool {
+            try container.encode(bool)
+        } else if let dict = value as? [String: Any] {
+            let codableDict = dict.mapValues { AnyCodableValue($0) }
+            try container.encode(codableDict)
+        } else if let array = value as? [Any] {
+            let codableArray = array.map { AnyCodableValue($0) }
+            try container.encode(codableArray)
+        } else {
+            throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Cannot encode value"))
+        }
+    }
+}
+
+/// Represents a value in the nuts dictionary that can be either a string or a dictionary
+public enum NutValue: CashuCodabale, @unchecked Sendable {
+    case string(String)
+    case dictionary([String: SendableValue])
+    
+    /// Get dictionary value if this is a dictionary case
+    public var dictionaryValue: [String: Any]? {
+        if case .dictionary(let dict) = self {
+            return dict.mapValues { $0.anyValue }
+        }
+        return nil
+    }
+    
+    /// Get string value if this is a string case
+    public var stringValue: String? {
+        if case .string(let str) = self {
+            return str
+        }
+        return nil
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        
+        if let string = try? container.decode(String.self) {
+            self = .string(string)
+        } else if let anyValue = try? container.decode(AnyCodableValue.self) {
+            if let dictionary = anyValue.value as? [String: Any] {
+                let sendableDict = dictionary.compactMapValues { SendableValue(anyValue: $0) }
+                self = .dictionary(sendableDict)
+            } else {
+                throw DecodingError.typeMismatch(NutValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Cannot decode NutValue"))
+            }
+        } else {
+            throw DecodingError.typeMismatch(NutValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Cannot decode NutValue"))
+        }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        
+        switch self {
+        case .string(let string):
+            try container.encode(string)
+        case .dictionary(let dictionary):
+            let anyDict = dictionary.mapValues { $0.anyValue }
+            let anyCodable = AnyCodableValue(anyDict)
+            try container.encode(anyCodable)
+        }
+    }
+}
+
+/// A Sendable wrapper for common value types
+public enum SendableValue: Sendable {
+    case string(String)
+    case int(Int)
+    case bool(Bool)
+    case array([SendableValue])
+    case dictionary([String: SendableValue])
+    
+    public var anyValue: Any {
+        switch self {
+        case .string(let value): return value
+        case .int(let value): return value
+        case .bool(let value): return value
+        case .array(let values): return values.map { $0.anyValue }
+        case .dictionary(let dict): return dict.mapValues { $0.anyValue }
+        }
+    }
+    
+    public init?(anyValue: Any) {
+        switch anyValue {
+        case let string as String:
+            self = .string(string)
+        case let int as Int:
+            self = .int(int)
+        case let bool as Bool:
+            self = .bool(bool)
+        case let array as [Any]:
+            let sendableArray = array.compactMap { SendableValue(anyValue: $0) }
+            if sendableArray.count == array.count {
+                self = .array(sendableArray)
+            } else {
+                return nil
+            }
+        case let dict as [String: Any]:
+            let sendableDict = dict.compactMapValues { SendableValue(anyValue: $0) }
+            if sendableDict.count == dict.count {
+                self = .dictionary(sendableDict)
+            } else {
+                return nil
+            }
+        default:
+            return nil
+        }
+    }
+}
+
+
 /// Mint information response structure
 public struct MintInfo: CashuCodabale {
     public let name: String?
@@ -18,9 +164,21 @@ public struct MintInfo: CashuCodabale {
     public let description: String?
     public let descriptionLong: String?
     public let contact: [String]?
-    public let nuts: [String: String]?
+    public let nuts: [String: NutValue]?
     public let motd: String?
     public let parameter: MintParameters?
+    
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case pubkey
+        case version
+        case description
+        case descriptionLong = "description_long"
+        case contact
+        case nuts
+        case motd
+        case parameter
+    }
     
     public init(
         name: String? = nil,
@@ -29,7 +187,7 @@ public struct MintInfo: CashuCodabale {
         description: String? = nil,
         descriptionLong: String? = nil,
         contact: [String]? = nil,
-        nuts: [String: String]? = nil,
+        nuts: [String: NutValue]? = nil,
         motd: String? = nil,
         parameter: MintParameters? = nil
     ) {
@@ -51,7 +209,7 @@ public struct MintInfo: CashuCodabale {
     
     /// Get the version of a specific NUT if supported
     public func getNUTVersion(_ nut: String) -> String? {
-        return nuts?[nut]
+        nuts?[nut]?.stringValue
     }
     
     /// Get all supported NUTs
@@ -63,6 +221,44 @@ public struct MintInfo: CashuCodabale {
     public func supportsBasicOperations() -> Bool {
         let basicNUTs = ["NUT-00", "NUT-01", "NUT-02"]
         return basicNUTs.allSatisfy { supportsNUT($0) }
+    }
+    
+    /// Get NUT-04 settings if supported
+    public func getNUT04Settings() -> NUT04Settings? {
+        guard let nut04Data = nuts?["4"]?.dictionaryValue else { return nil }
+        
+        let disabled = nut04Data["disabled"] as? Bool ?? false
+        
+        guard let methodsData = nut04Data["methods"] as? [[String: Any]] else {
+            return NUT04Settings(methods: [], disabled: disabled)
+        }
+        
+        let methods = methodsData.compactMap { methodDict -> MintMethodSetting? in
+            guard let method = methodDict["method"] as? String,
+                  let unit = methodDict["unit"] as? String else {
+                return nil
+            }
+            
+            let minAmount = methodDict["min_amount"] as? Int
+            let maxAmount = methodDict["max_amount"] as? Int
+            let options = methodDict["options"] as? [String: String]
+            
+            return MintMethodSetting(
+                method: method,
+                unit: unit,
+                minAmount: minAmount,
+                maxAmount: maxAmount,
+                options: options
+            )
+        }
+        
+        return NUT04Settings(methods: methods, disabled: disabled)
+    }
+    
+    /// Check if mint supports minting for specific method-unit pair
+    public func supportsMinting(method: String, unit: String) -> Bool {
+        guard let settings = getNUT04Settings() else { return false }
+        return settings.isSupported(method: method, unit: unit)
     }
 }
 
@@ -174,8 +370,8 @@ public struct MintInfoService: Sendable {
         
         // Validate nuts dictionary if present
         if let nuts = info.nuts {
-            for (key, value) in nuts {
-                if key.isEmpty || value.isEmpty { return false }
+            for (key, _) in nuts {
+                if key.isEmpty { return false }
             }
         }
         
@@ -237,10 +433,21 @@ public struct MintInfoService: Sendable {
             descriptionLong: "This is a test mint used for development and testing purposes",
             contact: ["admin@testmint.com"],
             nuts: [
-                "NUT-00": "1.0",
-                "NUT-01": "1.0",
-                "NUT-02": "1.0",
-                "NUT-03": "1.0"
+                "NUT-00": .string("1.0"),
+                "NUT-01": .string("1.0"),
+                "NUT-02": .string("1.0"),
+                "NUT-03": .string("1.0"),
+                "4": .dictionary([
+                    "methods": .array([
+                        .dictionary([
+                            "method": .string("bolt11"),
+                            "unit": .string("sat"),
+                            "min_amount": .int(1),
+                            "max_amount": .int(1000000)
+                        ])
+                    ]),
+                    "disabled": .bool(false)
+                ])
             ],
             motd: "Welcome to Test Mint!",
             parameter: MintParameters(

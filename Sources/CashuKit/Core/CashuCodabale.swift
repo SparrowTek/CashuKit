@@ -7,6 +7,6 @@
 
 import Foundation
 
-protocol CashuCodabale: CashuEncodable, CashuDecodable, Sendable {}
-protocol CashuEncodable: Encodable, Sendable {}
-protocol CashuDecodable: Decodable, Sendable {}
+public protocol CashuCodabale: CashuEncodable, CashuDecodable, Sendable {}
+public protocol CashuEncodable: Encodable, Sendable {}
+public protocol CashuDecodable: Decodable, Sendable {}
