@@ -61,6 +61,7 @@ public func hashToCurve(_ message: Data) throws -> P256K.KeyAgreement.PublicKey 
 }
 
 /// Convenience function for string messages
+@discardableResult
 public func hashToCurve(_ message: String) throws -> P256K.KeyAgreement.PublicKey {
     guard let data = message.data(using: .utf8) else {
         throw CashuError.invalidSecretLength

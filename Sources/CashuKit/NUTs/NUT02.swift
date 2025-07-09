@@ -10,80 +10,8 @@ import Foundation
 import P256K
 import CryptoKit
 
-// MARK: - NUT-02: Keysets and fees
-
 /// NUT-02: Keysets and fees
 /// This NUT defines the keyset and fee structure for Cashu mints
-
-/// Keyset information structure
-public struct KeysetInfo: CashuCodabale {
-    public let id: String
-    public let unit: String
-    public let active: Bool
-    public let inputFeePpk: Int?
-    
-    public init(id: String, unit: String, active: Bool, inputFeePpk: Int? = nil) {
-        self.id = id
-        self.unit = unit
-        self.active = active
-        self.inputFeePpk = inputFeePpk
-    }
-    
-    private enum CodingKeys: String, CodingKey {
-        case id
-        case unit
-        case active
-        case inputFeePpk = "input_fee_ppk"
-    }
-}
-
-/// Keyset with public keys
-public struct Keyset: CashuCodabale {
-    public let id: String
-    public let unit: String
-    public let keys: [String: String] // amount -> public key
-    
-    public init(id: String, unit: String, keys: [String: String]) {
-        self.id = id
-        self.unit = unit
-        self.keys = keys
-    }
-    
-    /// Get the public key for a specific amount
-    public func getPublicKey(for amount: Int) -> String? {
-        return keys[String(amount)]
-    }
-    
-    /// Get all amounts supported by this keyset
-    public func getSupportedAmounts() -> [Int] {
-        return keys.keys.compactMap { Int($0) }.sorted()
-    }
-    
-    /// Validate that all keys are valid hex strings
-    public func validateKeys() -> Bool {
-        return keys.values.allSatisfy { key in
-            key.isValidHex && key.count == 66 // 33 bytes compressed key = 66 hex chars
-        }
-    }
-}
-
-/// Response structure for GET /v1/keysets
-public struct GetKeysetsResponse: CashuCodabale {
-    public let keysets: [KeysetInfo]
-    
-    public init(keysets: [KeysetInfo]) {
-        self.keysets = keysets
-    }
-}
-
-/// Response structure for GET /v1/keys and GET /v1/keys/{keyset_id}
-public struct GetKeysResponse: CashuCodabale {
-    public let keysets: [Keyset]
-    
-    public init(keysets: [Keyset]) {
-        self.keysets = keysets
-    }
-}
 
 // MARK: - Wallet Implementation Helper Structures
 

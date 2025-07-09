@@ -39,7 +39,7 @@ public struct CashuKeyUtils {
     /// Validate that a secret can be hashed to a valid curve point
     public static func validateSecret(_ secret: String) throws -> Bool {
         do {
-            _ = try hashToCurve(secret)
+            try hashToCurve(secret)
             return true
         } catch {
             return false
