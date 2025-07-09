@@ -8,6 +8,41 @@ public struct CashuKit {
     public static func setup(baseURL: String) {
         CashuEnvironment.current.setup(baseURL: baseURL)
     }
+    
+    /// Create a new Cashu wallet
+    /// - Parameters:
+    ///   - mintURL: URL of the mint
+    ///   - unit: Currency unit (defaults to "sat")
+    /// - Returns: Initialized wallet instance
+    public static func createWallet(
+        mintURL: String,
+        unit: String = "sat"
+    ) async -> CashuWallet {
+        return await CashuWallet(mintURL: mintURL, unit: unit)
+    }
+    
+    /// Create a wallet with custom configuration
+    /// - Parameter configuration: Wallet configuration
+    /// - Returns: Initialized wallet instance
+    public static func createWallet(
+        configuration: WalletConfiguration
+    ) async -> CashuWallet {
+        return await CashuWallet(configuration: configuration)
+    }
+    
+    /// Validate a mint URL
+    /// - Parameter mintURL: URL to validate
+    /// - Returns: True if valid, false otherwise
+    public static func validateMintURL(_ mintURL: String) -> Bool {
+        return ValidationUtils.validateMintURL(mintURL).isValid
+    }
+    
+    /// Validate a Cashu token
+    /// - Parameter token: Token to validate
+    /// - Returns: True if valid, false otherwise
+    public static func validateToken(_ token: CashuToken) -> Bool {
+        return ValidationUtils.validateCashuToken(token).isValid
+    }
 }
 
 /*
