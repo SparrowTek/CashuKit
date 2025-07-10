@@ -332,4 +332,231 @@ struct CashuWalletTests {
             #expect(error is CashuError)
         }
     }
+    
+    // MARK: - Denomination Utils Tests
+    
+    @Test
+    func denominationUtilsOptimalBreakdown() async throws {
+        // Test standard amounts
+        let breakdown100 = DenominationUtils.getOptimalDenominations(amount: 100)
+        #expect(breakdown100[64] == 1)
+        #expect(breakdown100[32] == 1)
+        #expect(breakdown100[4] == 1)
+        
+        let breakdown255 = DenominationUtils.getOptimalDenominations(amount: 255)
+        #expect(breakdown255[128] == 1)
+        #expect(breakdown255[64] == 1)
+        #expect(breakdown255[32] == 1)
+        #expect(breakdown255[16] == 1)
+        #expect(breakdown255[8] == 1)
+        #expect(breakdown255[4] == 1)
+        #expect(breakdown255[2] == 1)
+        #expect(breakdown255[1] == 1)
+        
+        // Test edge cases
+        let breakdown0 = DenominationUtils.getOptimalDenominations(amount: 0)
+        #expect(breakdown0.isEmpty)
+        
+        let breakdown1 = DenominationUtils.getOptimalDenominations(amount: 1)
+        #expect(breakdown1[1] == 1)
+        #expect(breakdown1.count == 1)
+    }
+    
+    @Test
+    func denominationUtilsEfficiency() async throws {
+        // Optimal breakdown (powers of 2)
+        let optimal: [Int: Int] = [1: 1, 2: 1, 4: 1, 8: 1] // Total: 15, 4 proofs
+        let optimalEfficiency = DenominationUtils.calculateEfficiency(optimal)
+        #expect(optimalEfficiency == 1.0)
+        
+        // Suboptimal breakdown (all 1s)
+        let suboptimal: [Int: Int] = [1: 15] // Total: 15, 15 proofs
+        let suboptimalEfficiency = DenominationUtils.calculateEfficiency(suboptimal)
+        #expect(suboptimalEfficiency < 1.0)
+        #expect(suboptimalEfficiency > 0.0)
+        
+        // Test efficiency check
+        #expect(DenominationUtils.isEfficient(optimal, threshold: 0.8))
+        #expect(!DenominationUtils.isEfficient(suboptimal, threshold: 0.8))
+    }
+    
+    @Test
+    func proofDenominationCounts() async throws {
+        let proofs = [
+            Proof(amount: 1, id: "id1", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+            Proof(amount: 1, id: "id2", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890"),
+            Proof(amount: 2, id: "id3", secret: "secret3", C: "1234567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890"),
+            Proof(amount: 4, id: "id4", secret: "secret4", C: "567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890abcd"),
+            Proof(amount: 4, id: "id5", secret: "secret5", C: "90abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890abcdef12")
+        ]
+        
+        let denominationCounts = proofs.denominationCounts
+        #expect(denominationCounts[1] == 2)
+        #expect(denominationCounts[2] == 1)
+        #expect(denominationCounts[4] == 2)
+        #expect(denominationCounts.count == 3)
+    }
+    
+    // MARK: - Balance Breakdown Tests
+    
+    @Test
+    func balanceBreakdownTypes() async throws {
+        // Test BalanceBreakdown
+        let keysetBalance1 = KeysetBalance(
+            keysetID: "keyset1",
+            balance: 300,
+            proofCount: 3,
+            denominations: [1: 1, 2: 1, 4: 1],
+            isActive: true
+        )
+        
+        let keysetBalance2 = KeysetBalance(
+            keysetID: "keyset2",
+            balance: 50,
+            proofCount: 1,
+            denominations: [50: 1],
+            isActive: false
+        )
+        
+        let balanceBreakdown = BalanceBreakdown(
+            totalBalance: 350,
+            keysetBalances: ["keyset1": keysetBalance1, "keyset2": keysetBalance2],
+            proofCount: 4
+        )
+        
+        #expect(balanceBreakdown.totalBalance == 350)
+        #expect(balanceBreakdown.keysetBalances.count == 2)
+        #expect(balanceBreakdown.proofCount == 4)
+        #expect(balanceBreakdown.keysetBalances["keyset1"]?.isActive == true)
+        #expect(balanceBreakdown.keysetBalances["keyset2"]?.isActive == false)
+    }
+    
+    @Test
+    func balanceUpdateTypes() async throws {
+        let update = BalanceUpdate(
+            newBalance: 200,
+            previousBalance: 100,
+            timestamp: Date()
+        )
+        
+        #expect(update.balanceChanged == true)
+        #expect(update.balanceDifference == 100)
+        #expect(update.error == nil)
+        
+        let noChangeUpdate = BalanceUpdate(
+            newBalance: 100,
+            previousBalance: 100,
+            timestamp: Date()
+        )
+        
+        #expect(noChangeUpdate.balanceChanged == false)
+        #expect(noChangeUpdate.balanceDifference == 0)
+    }
+    
+    @Test
+    func denominationBreakdownTypes() async throws {
+        let denominations: [Int: Int] = [1: 5, 2: 3, 4: 2, 8: 1]
+        let breakdown = DenominationBreakdown(
+            denominations: denominations,
+            totalValue: 25, // 5*1 + 3*2 + 2*4 + 1*8
+            totalProofs: 11 // 5 + 3 + 2 + 1
+        )
+        
+        #expect(breakdown.totalValue == 25)
+        #expect(breakdown.totalProofs == 11)
+        #expect(breakdown.availableDenominations == [1, 2, 4, 8])
+        #expect(breakdown.denominations[1] == 5)
+        #expect(breakdown.denominations[8] == 1)
+    }
+    
+    @Test
+    func optimizationResultTypes() async throws {
+        let previousDenominations: [Int: Int] = [1: 15]
+        let newDenominations: [Int: Int] = [1: 1, 2: 1, 4: 1, 8: 1]
+        
+        let result = OptimizationResult(
+            success: true,
+            proofsChanged: true,
+            newProofs: [],
+            previousDenominations: previousDenominations,
+            newDenominations: newDenominations
+        )
+        
+        #expect(result.success == true)
+        #expect(result.proofsChanged == true)
+        #expect(result.newProofs.isEmpty)
+        #expect(result.previousDenominations[1] == 15)
+        #expect(result.newDenominations[8] == 1)
+    }
+    
+    // MARK: - Integration Tests for New Functionality
+    
+    @Test
+    func walletStatisticsIntegration() async throws {
+        let proofManager = ProofManager()
+        
+        let proofs = [
+            Proof(amount: 100, id: "keyset1", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+            Proof(amount: 200, id: "keyset1", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890"),
+            Proof(amount: 50, id: "keyset2", secret: "secret3", C: "1234567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890")
+        ]
+        
+        try await proofManager.addProofs(proofs)
+        
+        // Test that the ProofManager correctly tracks balances by keyset
+        let totalBalance = try await proofManager.getTotalBalance()
+        let keyset1Balance = try await proofManager.getBalance(keysetID: "keyset1")
+        let keyset2Balance = try await proofManager.getBalance(keysetID: "keyset2")
+        
+        #expect(totalBalance == 350)
+        #expect(keyset1Balance == 300)
+        #expect(keyset2Balance == 50)
+        
+        // Test proof selection optimization
+        let selectedForSmallAmount = try await proofManager.selectProofs(amount: 50)
+        #expect(selectedForSmallAmount.count == 1) // Should select the 50 sat proof
+        #expect(selectedForSmallAmount[0].amount == 50)
+        
+        // Test proof selection for larger amount
+        let selectedForLargeAmount = try await proofManager.selectProofs(amount: 250)
+        let selectedTotal = selectedForLargeAmount.reduce(0) { $0 + $1.amount }
+        #expect(selectedTotal >= 250)
+        #expect(selectedTotal <= 350) // Maximum possible with available proofs
+    }
+    
+    @Test
+    func tokenUtilsIntegrationWithNewFeatures() async throws {
+        let proof1 = Proof(amount: 100, id: "keyset1", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+        let proof2 = Proof(amount: 200, id: "keyset1", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890")
+        let proof3 = Proof(amount: 50, id: "keyset2", secret: "secret3", C: "1234567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890")
+        
+        let entry1 = TokenEntry(mint: "https://mint1.example.com", proofs: [proof1, proof2])
+        let entry2 = TokenEntry(mint: "https://mint2.example.com", proofs: [proof3])
+        
+        let token = CashuToken(token: [entry1, entry2], unit: "sat", memo: "Test multi-mint token")
+        
+        // Test value calculation
+        let totalValue = CashuTokenUtils.calculateTokenValue(token)
+        #expect(totalValue == 350)
+        
+        // Test grouping by mint
+        let groupedProofs = CashuTokenUtils.groupProofsByMint(token)
+        #expect(groupedProofs.count == 2)
+        #expect(groupedProofs["https://mint1.example.com"]?.count == 2)
+        #expect(groupedProofs["https://mint2.example.com"]?.count == 1)
+        
+        // Test import validation
+        let validationResult = CashuTokenUtils.validateImportedToken(token)
+        #expect(validationResult.isValid)
+        #expect(validationResult.totalValue == 350)
+        #expect(validationResult.errors.isEmpty)
+        
+        // Test export/import round trip
+        let exported = try CashuTokenUtils.exportToken(token, format: .serialized)
+        let imported = try CashuTokenUtils.importToken(exported)
+        
+        #expect(imported.token.count == 2)
+        #expect(CashuTokenUtils.calculateTokenValue(imported) == 350)
+        #expect(imported.memo == "Test multi-mint token")
+    }
 }

@@ -400,4 +400,288 @@ struct TokenUtilsTests {
         
         #expect(deserializedLong.memo == longMemo)
     }
+    
+    // MARK: - Token Value Calculation Tests
+    
+    @Test
+    func tokenValueCalculation() async throws {
+        let proof1 = Proof(amount: 100, id: "id1", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+        let proof2 = Proof(amount: 200, id: "id2", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890")
+        let proof3 = Proof(amount: 50, id: "id3", secret: "secret3", C: "1234567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890")
+        
+        let entry1 = TokenEntry(mint: "https://mint1.example.com", proofs: [proof1, proof2])
+        let entry2 = TokenEntry(mint: "https://mint2.example.com", proofs: [proof3])
+        
+        let token = CashuToken(token: [entry1, entry2], unit: "sat", memo: nil)
+        
+        let totalValue = CashuTokenUtils.calculateTokenValue(token)
+        #expect(totalValue == 350)
+        
+        // Test empty token
+        let emptyToken = CashuToken(token: [], unit: "sat", memo: nil)
+        let emptyValue = CashuTokenUtils.calculateTokenValue(emptyToken)
+        #expect(emptyValue == 0)
+        
+        // Test single proof token
+        let singleEntry = TokenEntry(mint: "https://mint.example.com", proofs: [proof1])
+        let singleToken = CashuToken(token: [singleEntry], unit: "sat", memo: nil)
+        let singleValue = CashuTokenUtils.calculateTokenValue(singleToken)
+        #expect(singleValue == 100)
+    }
+    
+    @Test
+    func proofGroupingByMint() async throws {
+        let proof1 = Proof(amount: 100, id: "id1", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+        let proof2 = Proof(amount: 200, id: "id2", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890")
+        let proof3 = Proof(amount: 50, id: "id3", secret: "secret3", C: "1234567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890")
+        
+        let mint1URL = "https://mint1.example.com"
+        let mint2URL = "https://mint2.example.com"
+        
+        let entry1 = TokenEntry(mint: mint1URL, proofs: [proof1, proof2])
+        let entry2 = TokenEntry(mint: mint2URL, proofs: [proof3])
+        
+        let token = CashuToken(token: [entry1, entry2], unit: "sat", memo: nil)
+        
+        let groupedProofs = CashuTokenUtils.groupProofsByMint(token)
+        
+        #expect(groupedProofs.count == 2)
+        #expect(groupedProofs[mint1URL]?.count == 2)
+        #expect(groupedProofs[mint2URL]?.count == 1)
+        #expect(groupedProofs[mint1URL]?.contains { $0.amount == 100 } == true)
+        #expect(groupedProofs[mint1URL]?.contains { $0.amount == 200 } == true)
+        #expect(groupedProofs[mint2URL]?.contains { $0.amount == 50 } == true)
+    }
+    
+    @Test
+    func createTokenFromMultipleMints() async throws {
+        let proof1 = Proof(amount: 100, id: "id1", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+        let proof2 = Proof(amount: 200, id: "id2", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890")
+        let proof3 = Proof(amount: 50, id: "id3", secret: "secret3", C: "1234567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890")
+        
+        let mint1URL = "https://mint1.example.com"
+        let mint2URL = "https://mint2.example.com"
+        
+        let proofsByMint: [String: [Proof]] = [
+            mint1URL: [proof1, proof2],
+            mint2URL: [proof3]
+        ]
+        
+        let token = CashuTokenUtils.createTokenFromMultipleMints(
+            proofsByMint: proofsByMint,
+            unit: "sat",
+            memo: "Multi-mint token"
+        )
+        
+        #expect(token.token.count == 2)
+        #expect(token.unit == "sat")
+        #expect(token.memo == "Multi-mint token")
+        
+        let mintURLs = Set(token.token.map { $0.mint })
+        #expect(mintURLs.contains(mint1URL))
+        #expect(mintURLs.contains(mint2URL))
+        
+        let totalValue = CashuTokenUtils.calculateTokenValue(token)
+        #expect(totalValue == 350)
+    }
+    
+    // MARK: - Import/Export Tests
+    
+    @Test
+    func tokenExportFormats() async throws {
+        let proof = Proof(
+            amount: 100,
+            id: "test-keyset-id",
+            secret: "test-secret",
+            C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        )
+        
+        let token = CashuToken(
+            token: [TokenEntry(mint: "https://mint.example.com", proofs: [proof])],
+            unit: "sat",
+            memo: "Test memo"
+        )
+        
+        // Test serialized format
+        let serialized = try CashuTokenUtils.exportToken(token, format: .serialized)
+        #expect(serialized.hasPrefix("cashuA"))
+        #expect(!serialized.contains("cashu:"))
+        
+        // Test JSON format
+        let json = try CashuTokenUtils.exportToken(token, format: .json)
+        #expect(json.contains("\"amount\" : 100"))
+        #expect(json.contains("\"secret\" : \"test-secret\""))
+        
+        // Test QR code format (should include URI)
+        let qr = try CashuTokenUtils.exportToken(token, format: .qrCode)
+        #expect(qr.hasPrefix("cashu:cashuA"))
+        
+        // Test serialized with URI
+        let serializedWithURI = try CashuTokenUtils.exportToken(token, format: .serialized, includeURI: true)
+        #expect(serializedWithURI.hasPrefix("cashu:cashuA"))
+    }
+    
+    @Test
+    func tokenImportFormats() async throws {
+        let proof = Proof(
+            amount: 100,
+            id: "test-keyset-id",
+            secret: "test-secret",
+            C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        )
+        
+        let originalToken = CashuToken(
+            token: [TokenEntry(mint: "https://mint.example.com", proofs: [proof])],
+            unit: "sat",
+            memo: "Test memo"
+        )
+        
+        // Test import from serialized format
+        let serialized = try CashuTokenUtils.exportToken(originalToken, format: .serialized)
+        let importedFromSerialized = try CashuTokenUtils.importToken(serialized, format: .serialized)
+        #expect(importedFromSerialized.token[0].proofs[0].amount == 100)
+        #expect(importedFromSerialized.memo == "Test memo")
+        
+        // Test import from JSON format
+        let json = try CashuTokenUtils.exportToken(originalToken, format: .json)
+        let importedFromJSON = try CashuTokenUtils.importToken(json, format: .json)
+        #expect(importedFromJSON.token[0].proofs[0].amount == 100)
+        #expect(importedFromJSON.memo == "Test memo")
+        
+        // Test auto-detection of format
+        let autoDetectedSerialized = try CashuTokenUtils.importToken(serialized)
+        #expect(autoDetectedSerialized.token[0].proofs[0].amount == 100)
+        
+        let autoDetectedJSON = try CashuTokenUtils.importToken(json)
+        #expect(autoDetectedJSON.token[0].proofs[0].amount == 100)
+        
+        // Test import with URI scheme
+        let withURI = try CashuTokenUtils.exportToken(originalToken, format: .qrCode)
+        let importedWithURI = try CashuTokenUtils.importToken(withURI)
+        #expect(importedWithURI.token[0].proofs[0].amount == 100)
+    }
+    
+    @Test
+    func tokenValidationForImports() async throws {
+        let validProof = Proof(amount: 100, id: "id", secret: "secret", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+        let validEntry = TokenEntry(mint: "https://mint.example.com", proofs: [validProof])
+        let validToken = CashuToken(token: [validEntry], unit: "sat", memo: nil)
+        
+        // Test valid token
+        let validResult = CashuTokenUtils.validateImportedToken(validToken)
+        #expect(validResult.isValid)
+        #expect(validResult.errors.isEmpty)
+        #expect(validResult.totalValue == 100)
+        
+        // Test invalid token structure
+        let emptyToken = CashuToken(token: [], unit: "sat", memo: nil)
+        let emptyResult = CashuTokenUtils.validateImportedToken(emptyToken)
+        #expect(!emptyResult.isValid)
+        #expect(!emptyResult.errors.isEmpty)
+        
+        // Test duplicate proofs
+        let duplicateEntry = TokenEntry(mint: "https://mint.example.com", proofs: [validProof, validProof])
+        let duplicateToken = CashuToken(token: [duplicateEntry], unit: "sat", memo: nil)
+        let duplicateResult = CashuTokenUtils.validateImportedToken(duplicateToken)
+        #expect(!duplicateResult.isValid)
+        #expect(duplicateResult.errors.contains { $0.contains("Duplicate proofs") })
+        
+        // Test strict validation
+        let largeProof = Proof(amount: 2_000_000, id: "id", secret: "secret", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+        let largeEntry = TokenEntry(mint: "https://mint.example.com", proofs: [largeProof])
+        let largeToken = CashuToken(token: [largeEntry], unit: "sat", memo: nil)
+        
+        let strictResult = CashuTokenUtils.validateImportedToken(largeToken, strictValidation: true)
+        #expect(strictResult.isValid) // Should still be valid
+        #expect(strictResult.hasWarnings) // But should have warnings
+        #expect(strictResult.warnings.contains { $0.contains("unusually large amount") })
+    }
+    
+    // MARK: - Token Backup Tests
+    
+    @Test
+    func tokenBackupAndRestore() async throws {
+        let proof1 = Proof(amount: 100, id: "id1", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+        let proof2 = Proof(amount: 200, id: "id2", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890")
+        
+        let token1 = CashuToken(token: [TokenEntry(mint: "https://mint1.example.com", proofs: [proof1])], unit: "sat", memo: "Token 1")
+        let token2 = CashuToken(token: [TokenEntry(mint: "https://mint2.example.com", proofs: [proof2])], unit: "sat", memo: "Token 2")
+        
+        let tokens = [token1, token2]
+        
+        let metadata = TokenBackupMetadata(
+            deviceName: "Test Device",
+            appVersion: "1.0",
+            totalValue: 300,
+            tokenCount: 2,
+            mintUrls: ["https://mint1.example.com", "https://mint2.example.com"],
+            notes: "Test backup"
+        )
+        
+        // Create backup
+        let backupData = try CashuTokenUtils.createTokenBackup(tokens, metadata: metadata)
+        #expect(backupData.contains("\"version\" : \"1.0\""))
+        #expect(backupData.contains("\"deviceName\" : \"Test Device\""))
+        #expect(backupData.contains("\"totalValue\" : 300"))
+        
+        // Restore backup
+        let (restoredTokens, restoredMetadata) = try CashuTokenUtils.restoreTokenBackup(backupData)
+        
+        #expect(restoredTokens.count == 2)
+        #expect(restoredTokens[0].memo == "Token 1")
+        #expect(restoredTokens[1].memo == "Token 2")
+        
+        #expect(restoredMetadata?.deviceName == "Test Device")
+        #expect(restoredMetadata?.appVersion == "1.0")
+        #expect(restoredMetadata?.totalValue == 300)
+        #expect(restoredMetadata?.tokenCount == 2)
+        #expect(restoredMetadata?.notes == "Test backup")
+        
+        let totalValue = restoredTokens.reduce(0) { total, token in
+            total + CashuTokenUtils.calculateTokenValue(token)
+        }
+        #expect(totalValue == 300)
+    }
+    
+    @Test
+    func tokenBackupWithoutMetadata() async throws {
+        let proof = Proof(amount: 100, id: "id", secret: "secret", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+        let token = CashuToken(token: [TokenEntry(mint: "https://mint.example.com", proofs: [proof])], unit: "sat", memo: nil)
+        
+        let backupData = try CashuTokenUtils.createTokenBackup([token])
+        let (restoredTokens, restoredMetadata) = try CashuTokenUtils.restoreTokenBackup(backupData)
+        
+        #expect(restoredTokens.count == 1)
+        #expect(restoredTokens[0].token[0].proofs[0].amount == 100)
+        #expect(restoredMetadata?.deviceName == nil)
+        #expect(restoredMetadata?.appVersion == nil)
+    }
+    
+    @Test
+    func tokenBackupErrors() async throws {
+        // Test invalid backup data
+        do {
+            _ = try CashuTokenUtils.restoreTokenBackup("invalid json")
+            #expect(Bool(false), "Should have thrown an error for invalid JSON")
+        } catch {
+            #expect(error is CashuError)
+        }
+        
+        // Test unsupported version
+        let invalidVersionBackup = """
+        {
+            "version": "2.0",
+            "timestamp": "2023-01-01T00:00:00Z",
+            "tokens": [],
+            "metadata": null
+        }
+        """
+        
+        do {
+            _ = try CashuTokenUtils.restoreTokenBackup(invalidVersionBackup)
+            #expect(Bool(false), "Should have thrown an error for unsupported version")
+        } catch {
+            #expect(error is CashuError)
+        }
+    }
 }

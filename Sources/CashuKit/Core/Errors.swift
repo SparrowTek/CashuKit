@@ -68,6 +68,7 @@ public enum CashuError: Error {
     case missingRequiredField(String)
     case unsupportedOperation(String)
     case concurrencyError(String)
+    case unsupportedVersion
 }
 
 // MARK: - HTTP Error Response (NUT-00 Specification)
@@ -198,6 +199,8 @@ extension CashuError: LocalizedError {
             return "Unsupported operation: \(operation)"
         case .concurrencyError(let message):
             return "Concurrency error: \(message)"
+        case .unsupportedVersion:
+            return "Unsupported version"
         }
     }
     
