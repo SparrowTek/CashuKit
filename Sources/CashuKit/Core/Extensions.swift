@@ -50,4 +50,16 @@ extension String {
     public var hexData: Data? {
         return Data(hexString: self)
     }
+    
+    /// Check if string is nil or empty
+    public var isNilOrEmpty: Bool {
+        return self.isEmpty
+    }
+}
+
+extension Optional where Wrapped == String {
+    /// Check if optional string is nil or empty
+    public var isNilOrEmpty: Bool {
+        return self?.isEmpty ?? true
+    }
 } 
