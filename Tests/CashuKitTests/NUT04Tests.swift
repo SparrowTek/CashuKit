@@ -9,12 +9,13 @@ import Foundation
 import Testing
 @testable import CashuKit
 
+@Suite("NUT 04 Tests")
 struct NUT04Tests {
     
     // MARK: - Data Structure Tests
     
     @Test("MintQuoteRequest validation")
-    func testMintQuoteRequestValidation() {
+    func mintQuoteRequestValidation() {
         // Valid request
         let validRequest = MintQuoteRequest(unit: "sat", amount: 100)
         #expect(validRequest.validate())
@@ -37,7 +38,7 @@ struct NUT04Tests {
     }
     
     @Test("MintQuoteResponse validation and state checking")
-    func testMintQuoteResponseValidation() {
+    func mintQuoteResponseValidation() {
         // Valid response
         let validResponse = MintQuoteResponse(
             quote: "quote123",
@@ -94,7 +95,7 @@ struct NUT04Tests {
     }
     
     @Test("MintRequest validation and privacy features")
-    func testMintRequestValidation() {
+    func mintRequestValidation() {
         // Create test blinded messages
         let blindedMessage1 = BlindedMessage(amount: 64, id: "keyset123", B_: "02abcd...")
         let blindedMessage2 = BlindedMessage(amount: 32, id: "keyset123", B_: "03efgh...")
@@ -123,7 +124,7 @@ struct NUT04Tests {
     }
     
     @Test("MintResponse validation")
-    func testMintResponseValidation() {
+    func mintResponseValidation() {
         // Create test blind signatures
         let signature1 = BlindSignature(amount: 32, id: "keyset123", C_: "02abcd...")
         let signature2 = BlindSignature(amount: 64, id: "keyset123", C_: "03efgh...")
@@ -141,7 +142,7 @@ struct NUT04Tests {
     // MARK: - Settings Tests
     
     @Test("MintMethodSetting validation")
-    func testMintMethodSettingValidation() {
+    func mintMethodSettingValidation() {
         let setting = MintMethodSetting(
             method: "bolt11",
             unit: "sat",
@@ -161,7 +162,7 @@ struct NUT04Tests {
     }
     
     @Test("NUT04Settings validation and configuration")
-    func testNUT04SettingsValidation() {
+    func nut04SettingsValidation() {
         let method1 = MintMethodSetting(method: "bolt11", unit: "sat", minAmount: 1, maxAmount: 1000000)
         let method2 = MintMethodSetting(method: "bolt11", unit: "usd", minAmount: 100, maxAmount: 10000000)
         
@@ -187,7 +188,7 @@ struct NUT04Tests {
     // MARK: - Utility Tests
     
     @Test("Optimal denominations calculation")
-    func testOptimalDenominations() {
+    func optimalDenominations() {
         // Test the optimal denominations concept with manual calculation
         // 96 should become [32, 64] in binary decomposition
         // 100 should become [4, 32, 64] in binary decomposition
@@ -233,7 +234,7 @@ struct NUT04Tests {
     // MARK: - Integration Tests
     
     @Test("MintInfo NUT-04 integration")
-    func testMintInfoNUT04Integration() throws {
+    func mintInfoNUT04Integration() throws {
         let mintInfo = MintInfo(
             name: "Test Mint",
             pubkey: "02a1b2c3d4e5f6...",
@@ -269,7 +270,7 @@ struct NUT04Tests {
     }
     
     @Test("MintInfo NUT-04 with disabled minting")
-    func testMintInfoNUT04WithDisabledMinting() {
+    func mintInfoNUT04WithDisabledMinting() {
         let mintInfo = MintInfo(
             name: "Test Mint",
             pubkey: "02a1b2c3d4e5f6...",
@@ -296,7 +297,7 @@ struct NUT04Tests {
     }
     
     @Test("MintInfo without NUT-04")
-    func testMintInfoWithoutNUT04() {
+    func mintInfoWithoutNUT04() {
         let mintInfo = MintInfo(
             name: "Test Mint",
             pubkey: "02a1b2c3d4e5f6...",
@@ -315,7 +316,7 @@ struct NUT04Tests {
     // MARK: - Error Handling Tests
     
     @Test("MintRequest validation with invalid outputs")
-    func testMintRequestValidationWithInvalidOutputs() {
+    func mintRequestValidationWithInvalidOutputs() {
         // Test with invalid blinded messages
         let invalidBlindedMessage = BlindedMessage(amount: 0, id: "", B_: "")
         let invalidRequest = MintRequest(quote: "quote123", outputs: [invalidBlindedMessage])
@@ -324,7 +325,7 @@ struct NUT04Tests {
     }
     
     @Test("MintResponse validation with invalid signatures")
-    func testMintResponseValidationWithInvalidSignatures() {
+    func mintResponseValidationWithInvalidSignatures() {
         // Test with invalid blind signatures
         let invalidSignature = BlindSignature(amount: 0, id: "", C_: "")
         let invalidResponse = MintResponse(signatures: [invalidSignature])
@@ -335,7 +336,7 @@ struct NUT04Tests {
     // MARK: - Sendable Conformance Tests
     
     @Test("All NUT-04 types are Sendable")
-    func testSendableConformance() async {
+    func sendableConformance() async {
         // This test ensures all types properly conform to Sendable
         
         let request = MintQuoteRequest(unit: "sat", amount: 100)
@@ -364,7 +365,7 @@ struct NUT04Tests {
     // MARK: - Method-specific Tests
     
     @Test("Mint operation types")
-    func testMintOperationTypes() {
+    func mintOperationTypes() {
         let allTypes = MintOperationType.allCases
         #expect(allTypes.contains(.mint))
         #expect(allTypes.contains(.quote))
@@ -377,7 +378,7 @@ struct NUT04Tests {
     }
     
     @Test("MintResult properties")
-    func testMintResultProperties() {
+    func mintResultProperties() {
         let proofs = [Proof(amount: 100, id: "test", secret: "secret", C: "signature")]
         let result = MintResult(
             newProofs: proofs,
@@ -395,7 +396,7 @@ struct NUT04Tests {
     }
     
     @Test("MintPreparation properties")
-    func testMintPreparationProperties() {
+    func mintPreparationProperties() {
         let blindedMessages = [BlindedMessage(amount: 100, id: "test", B_: "blinded")]
         let blindingData = [WalletBlindingData]() // Empty for test
         

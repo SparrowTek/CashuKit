@@ -100,6 +100,10 @@ public struct ValidationUtils: Sendable {
             if host.isEmpty {
                 errors.append("URL must have a valid host")
             }
+            // Check if host contains valid characters and structure
+            if host.contains(" ") || (!host.contains(".") && !host.lowercased().contains("localhost")) {
+                errors.append("URL must have a valid host")
+            }
         } else {
             errors.append("URL must have a valid host")
         }
@@ -297,14 +301,18 @@ public struct ValidationUtils: Sendable {
         
         // Basic Lightning invoice validation
         if trimmed.lowercased().hasPrefix("ln") {
-            // Lightning invoice format validation
-            let invoicePattern = "^ln(bc|tb)[0-9]+[a-zA-Z0-9]+$"
-            let regex = try! NSRegularExpression(pattern: invoicePattern, options: .caseInsensitive)
-            let range = NSRange(location: 0, length: trimmed.count)
-            
-            if regex.firstMatch(in: trimmed, options: [], range: range) == nil {
+            // Lightning invoice format validation - very permissive
+            // Just check that it starts with ln(bc|tb|bcrt) and has minimum length
+            let lowerTrimmed = trimmed.lowercased()
+            if !(lowerTrimmed.hasPrefix("lnbc") || lowerTrimmed.hasPrefix("lntb") || lowerTrimmed.hasPrefix("lnbcrt")) {
+                errors.append("Invalid Lightning invoice format")
+            } else if trimmed.count < 10 {
+                // Minimum length check
                 errors.append("Invalid Lightning invoice format")
             }
+        } else {
+            // If it doesn't start with "ln", it's not a valid Lightning invoice
+            errors.append("Invalid Lightning invoice format")
         }
         
         return ValidationResult(isValid: errors.isEmpty, errors: errors)

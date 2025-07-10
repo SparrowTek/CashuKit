@@ -184,7 +184,11 @@ public struct CashuTokenUtils {
             throw CashuError.deserializationFailed
         }
         let decoder = JSONDecoder()
-        return try decoder.decode(CashuToken.self, from: data)
+        do {
+            return try decoder.decode(CashuToken.self, from: data)
+        } catch {
+            throw CashuError.deserializationFailed
+        }
     }
     
     /// Create a CashuToken from UnblindedToken and mint information
@@ -234,6 +238,11 @@ public struct CashuTokenUtils {
                       !proof.id.isEmpty,
                       !proof.secret.isEmpty,
                       !proof.C.isEmpty else {
+                    return false
+                }
+                
+                // Validate hex string format
+                if Data(hexString: proof.C) == nil {
                     return false
                 }
             }
