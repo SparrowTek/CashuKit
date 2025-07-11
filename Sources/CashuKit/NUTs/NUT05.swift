@@ -73,13 +73,24 @@ public struct PostMeltQuoteResponse: CashuCodabale {
     public let unit: String
     public let state: MeltQuoteState
     public let expiry: Int
+    public let feeReserve: Int?
     
-    public init(quote: String, amount: Int, unit: String, state: MeltQuoteState, expiry: Int) {
+    private enum CodingKeys: String, CodingKey {
+        case quote
+        case amount
+        case unit
+        case state
+        case expiry
+        case feeReserve = "fee_reserve"
+    }
+    
+    public init(quote: String, amount: Int, unit: String, state: MeltQuoteState, expiry: Int, feeReserve: Int? = nil) {
         self.quote = quote
         self.amount = amount
         self.unit = unit
         self.state = state
         self.expiry = expiry
+        self.feeReserve = feeReserve
     }
     
     /// Validate the melt quote response structure
@@ -102,16 +113,34 @@ public struct PostMeltQuoteResponse: CashuCodabale {
     public var timeUntilExpiry: Int {
         return max(0, expiry - Int(Date().timeIntervalSince1970))
     }
+    
+    /// Whether this quote supports fee return (NUT-08)
+    public var supportsFeeReturn: Bool {
+        return feeReserve != nil && feeReserve! > 0
+    }
+    
+    /// Recommended number of blank outputs for fee return (NUT-08)
+    public var recommendedBlankOutputs: Int {
+        guard let feeReserve = feeReserve, feeReserve > 0 else { return 0 }
+        return FeeReturnCalculator.calculateBlankOutputCount(feeReserve: feeReserve)
+    }
+    
+    /// Total amount needed including fee reserve (NUT-08)
+    public var totalAmountWithFeeReserve: Int {
+        return amount + (feeReserve ?? 0)
+    }
 }
 
 /// Request structure for executing a melt
 public struct PostMeltRequest: CashuCodabale {
     public let quote: String
     public let inputs: [Proof]
+    public let outputs: [BlindedMessage]?
     
-    public init(quote: String, inputs: [Proof]) {
+    public init(quote: String, inputs: [Proof], outputs: [BlindedMessage]? = nil) {
         self.quote = quote
         self.inputs = inputs
+        self.outputs = outputs
     }
     
     /// Validate the melt request structure
@@ -128,12 +157,32 @@ public struct PostMeltRequest: CashuCodabale {
             }
         }
         
+        // Validate outputs if provided (NUT-08)
+        if let outputs = outputs {
+            for output in outputs {
+                guard !output.id.isEmpty,
+                      !output.B_.isEmpty else {
+                    return false
+                }
+            }
+        }
+        
         return true
     }
     
     /// Get total input amount
     public var totalInputAmount: Int {
         return inputs.reduce(0) { $0 + $1.amount }
+    }
+    
+    /// Number of blank outputs provided for fee return (NUT-08)
+    public var blankOutputCount: Int {
+        return outputs?.count ?? 0
+    }
+    
+    /// Whether this request supports fee return (NUT-08)
+    public var supportsFeeReturn: Bool {
+        return outputs != nil && !outputs!.isEmpty
     }
 }
 
@@ -166,6 +215,16 @@ public struct PostMeltResponse: CashuCodabale {
     /// Get total change amount
     public var totalChangeAmount: Int {
         return change?.reduce(0) { $0 + $1.amount } ?? 0
+    }
+    
+    /// Whether fees were returned (NUT-08)
+    public var hasFeesReturned: Bool {
+        return change != nil && !change!.isEmpty
+    }
+    
+    /// Number of change signatures returned (NUT-08)
+    public var changeSignatureCount: Int {
+        return change?.count ?? 0
     }
 }
 
@@ -578,6 +637,276 @@ public struct MeltService: Sendable {
         
         return try await executeCompleteMelt(
             preparation: preparation,
+            method: method,
+            at: mintURL
+        )
+    }
+    
+    // MARK: - NUT-08: Fee Return Methods
+    
+    /// Prepare a melt operation with fee return support (NUT-08)
+    /// - parameters:
+    ///   - paymentRequest: The payment request to melt for
+    ///   - method: Payment method
+    ///   - unit: Currency unit
+    ///   - availableProofs: Available proofs in wallet
+    ///   - mintURL: The base URL of the mint
+    ///   - configuration: Fee return configuration
+    /// - returns: MeltPreparation with blank outputs for fee return
+    public func prepareMeltWithFeeReturn(
+        paymentRequest: String,
+        method: PaymentMethod,
+        unit: String,
+        availableProofs: [Proof],
+        at mintURL: String,
+        configuration: FeeReturnConfiguration? = nil
+    ) async throws -> (preparation: MeltPreparation, blankOutputs: [BlankOutput]) {
+        // Get initial quote
+        let quote = try await requestMeltQuote(
+            request: paymentRequest,
+            method: method,
+            unit: unit,
+            at: mintURL
+        )
+        
+        // Calculate blank outputs needed
+        let feeReserve = quote.feeReserve ?? 0
+        let blankOutputCount = FeeReturnCalculator.calculateBlankOutputCount(feeReserve: feeReserve)
+        
+        // Use configuration if provided or get active keyset
+        let keysetID: String
+        if let configuration = configuration {
+            keysetID = configuration.keysetID
+        } else {
+            let activeKeysets = try await keysetManagementService.getActiveKeysets(from: mintURL)
+            keysetID = activeKeysets.first?.id ?? ""
+        }
+        
+        // Generate blank outputs
+        let blankOutputs = try await BlankOutputGenerator.generateBlankOutputs(
+            count: blankOutputCount,
+            keysetID: keysetID
+        )
+        
+        // Get keyset information for fee calculation
+        let keysetResponse = try await keysetManagementService.getKeysets(from: mintURL)
+        let keysetDict = Dictionary(uniqueKeysWithValues: keysetResponse.keysets.map { ($0.id, $0) })
+        
+        // Select optimal proofs for the required amount (including fee reserve)
+        let totalRequired = quote.totalAmountWithFeeReserve
+        let selectionResult = try await keysetManagementService.calculateOptimalProofSelection(
+            availableProofs: availableProofs,
+            targetAmount: totalRequired,
+            from: mintURL
+        )
+        
+        guard let selection = selectionResult.recommended else {
+            throw CashuError.insufficientFunds
+        }
+        
+        // Calculate fees
+        let fees = FeeCalculator.calculateFees(for: selection.selectedProofs, keysetInfo: keysetDict)
+        let totalInput = selection.totalAmount
+        let requiredAmount = quote.amount + fees + feeReserve
+        
+        guard totalInput >= requiredAmount else {
+            throw CashuError.insufficientFunds
+        }
+        
+        let changeAmount = totalInput - requiredAmount
+        
+        // Create change outputs if needed (separate from blank outputs)
+        var blindedMessages: [BlindedMessage]?
+        var blindingData: [WalletBlindingData]?
+        
+        if changeAmount > 0 {
+            // Create optimal denominations for regular change
+            let changeAmounts = createOptimalDenominations(for: changeAmount)
+            
+            // Create blinded messages for change
+            var messages: [BlindedMessage] = []
+            var blindings: [WalletBlindingData] = []
+            
+            for amount in changeAmounts {
+                let secret = CashuKeyUtils.generateRandomSecret()
+                let walletBlindingData = try WalletBlindingData(secret: secret)
+                let blindedMessage = BlindedMessage(
+                    amount: amount,
+                    id: keysetID,
+                    B_: walletBlindingData.blindedMessage.dataRepresentation.hexString
+                )
+                
+                messages.append(blindedMessage)
+                blindings.append(walletBlindingData)
+            }
+            
+            blindedMessages = messages
+            blindingData = blindings
+        }
+        
+        let preparation = MeltPreparation(
+            quote: quote,
+            inputProofs: selection.selectedProofs,
+            blindedMessages: blindedMessages,
+            blindingData: blindingData,
+            requiredAmount: requiredAmount,
+            changeAmount: changeAmount,
+            fees: fees
+        )
+        
+        return (preparation, blankOutputs)
+    }
+    
+    /// Execute a melt operation with fee return (NUT-08)
+    /// - parameters:
+    ///   - preparation: Prepared melt data
+    ///   - blankOutputs: Blank outputs for fee return
+    ///   - method: Payment method
+    ///   - mintURL: The base URL of the mint
+    /// - returns: MeltResult with fee return data
+    public func executeMeltWithFeeReturn(
+        preparation: MeltPreparation,
+        blankOutputs: [BlankOutput],
+        method: PaymentMethod,
+        at mintURL: String
+    ) async throws -> (meltResult: MeltResult, feeReturn: FeeReturnResult?) {
+        // Create melt request with blank outputs
+        let blankOutputMessages = blankOutputs.map { $0.blindedMessage }
+        let request = PostMeltRequest(
+            quote: preparation.quote.quote,
+            inputs: preparation.inputProofs,
+            outputs: blankOutputMessages
+        )
+        
+        // Execute melt
+        let response = try await executeMelt(request, method: method, at: mintURL)
+        
+        // Validate response
+        guard response.validate() else {
+            throw CashuError.invalidResponse
+        }
+        
+        // Process regular change first
+        var changeProofs: [Proof] = []
+        
+        if let changeSignatures = response.change,
+           let _ = preparation.blindedMessages,
+           let blindingData = preparation.blindingData {
+            
+            // Get mint public keys for unblinding
+            let keyResponse = try await keyExchangeService.getKeys(from: mintURL)
+            let mintKeys = Dictionary(uniqueKeysWithValues: keyResponse.keysets.flatMap { keyset in
+                keyset.keys.compactMap { (amountStr, publicKeyHex) -> (String, P256K.KeyAgreement.PublicKey)? in
+                    guard let amount = Int(amountStr),
+                          let publicKeyData = Data(hexString: publicKeyHex),
+                          let publicKey = try? P256K.KeyAgreement.PublicKey(dataRepresentation: publicKeyData, format: .compressed) else {
+                        return nil
+                    }
+                    return ("\(keyset.id)_\(amount)", publicKey)
+                }
+            })
+            
+            // Unblind signatures to create change proofs
+            for (index, signature) in changeSignatures.enumerated() {
+                let blindingDataItem = blindingData[index]
+                let mintKeyKey = "\(signature.id)_\(signature.amount)"
+                
+                guard let mintPublicKey = mintKeys[mintKeyKey] else {
+                    throw CashuError.invalidSignature
+                }
+                
+                guard let blindedSignatureData = Data(hexString: signature.C_) else {
+                    throw CashuError.invalidHexString
+                }
+                
+                let unblindedToken = try Wallet.unblindSignature(
+                    blindedSignature: blindedSignatureData,
+                    blindingData: blindingDataItem,
+                    mintPublicKey: mintPublicKey
+                )
+                
+                let proof = Proof(
+                    amount: signature.amount,
+                    id: signature.id,
+                    secret: unblindedToken.secret,
+                    C: unblindedToken.signature.hexString
+                )
+                
+                changeProofs.append(proof)
+            }
+        }
+        
+        // Process fee return if any change signatures were returned
+        var feeReturnResult: FeeReturnResult?
+        
+        if response.hasFeesReturned && !blankOutputs.isEmpty {
+            // Get mint public keys for unblinding fee returns
+            let keyResponse = try await keyExchangeService.getKeys(from: mintURL)
+            let mintPublicKeyData = Dictionary(uniqueKeysWithValues: keyResponse.keysets.flatMap { keyset in
+                keyset.keys.compactMap { (amountStr, publicKeyHex) -> (String, Data)? in
+                    guard let amount = Int(amountStr),
+                          let publicKeyData = Data(hexString: publicKeyHex) else {
+                        return nil
+                    }
+                    return ("\(amount)", publicKeyData)
+                }
+            })
+            
+            // Process fee return signatures
+            feeReturnResult = try BlankOutputGenerator.processChangeSignatures(
+                changeSignatures: response.change ?? [],
+                blankOutputs: blankOutputs,
+                mintPublicKeys: mintPublicKeyData
+            )
+            
+            // Add fee return proofs to change proofs
+            if let feeReturn = feeReturnResult {
+                changeProofs.append(contentsOf: feeReturn.returnedProofs)
+            }
+        }
+        
+        let meltResult = MeltResult(
+            state: response.state,
+            changeProofs: changeProofs,
+            spentProofs: preparation.inputProofs,
+            meltType: .payment,
+            totalAmount: preparation.inputProofs.reduce(0) { $0 + $1.amount },
+            fees: preparation.fees,
+            paymentProof: nil
+        )
+        
+        return (meltResult, feeReturnResult)
+    }
+    
+    /// Complete melt operation with fee return (prepare + execute)
+    /// - parameters:
+    ///   - paymentRequest: The payment request to melt for
+    ///   - method: Payment method
+    ///   - unit: Currency unit
+    ///   - availableProofs: Available proofs in wallet
+    ///   - mintURL: The base URL of the mint
+    ///   - configuration: Fee return configuration
+    /// - returns: MeltResult and FeeReturnResult
+    public func meltToPaymentWithFeeReturn(
+        paymentRequest: String,
+        method: PaymentMethod,
+        unit: String,
+        from availableProofs: [Proof],
+        at mintURL: String,
+        configuration: FeeReturnConfiguration? = nil
+    ) async throws -> (meltResult: MeltResult, feeReturn: FeeReturnResult?) {
+        let (preparation, blankOutputs) = try await prepareMeltWithFeeReturn(
+            paymentRequest: paymentRequest,
+            method: method,
+            unit: unit,
+            availableProofs: availableProofs,
+            at: mintURL,
+            configuration: configuration
+        )
+        
+        return try await executeMeltWithFeeReturn(
+            preparation: preparation,
+            blankOutputs: blankOutputs,
             method: method,
             at: mintURL
         )

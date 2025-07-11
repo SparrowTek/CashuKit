@@ -78,6 +78,7 @@ public actor CashuWallet {
     private var swapService: SwapService?
     private var keyExchangeService: KeyExchangeService?
     private var keysetManagementService: KeysetManagementService?
+    private var checkStateService: CheckStateService?
     
     private var currentMintInfo: MintInfo?
     private var currentKeysets: [String: Keyset] = [:]
@@ -608,6 +609,89 @@ public actor CashuWallet {
         )
     }
     
+    // MARK: - NUT-07: Token state check
+    
+    /// Check the state of specific proofs (NUT-07)
+    /// - Parameter proofs: Array of proofs to check
+    /// - Returns: BatchStateCheckResult with the state of each proof
+    public func checkProofStates(_ proofs: [Proof]) async throws -> BatchStateCheckResult {
+        guard isReady else {
+            throw CashuError.walletNotInitialized
+        }
+        
+        guard !proofs.isEmpty else {
+            throw CashuError.invalidProofSet
+        }
+        
+        let request = try PostCheckStateRequest(proofs: proofs)
+        let response = try await executeCheckState(request)
+        
+        var results: [StateCheckResult] = []
+        
+        for (index, proof) in proofs.enumerated() {
+            guard index < response.states.count else {
+                throw NUT07Error.stateCheckFailed("Response missing state for proof at index \(index)")
+            }
+            
+            let stateInfo = response.states[index]
+            
+            let proofY = try proof.calculateY()
+            guard stateInfo.Y.lowercased() == proofY.lowercased() else {
+                throw NUT07Error.proofYMismatch(expected: proofY, actual: stateInfo.Y)
+            }
+            
+            results.append(StateCheckResult(proof: proof, stateInfo: stateInfo))
+        }
+        
+        return BatchStateCheckResult(results: results)
+    }
+    
+    /// Check the state of a single proof (NUT-07)
+    /// - Parameter proof: The proof to check
+    /// - Returns: StateCheckResult with the proof state
+    public func checkProofState(_ proof: Proof) async throws -> StateCheckResult {
+        let batchResult = try await checkProofStates([proof])
+        guard let result = batchResult.results.first else {
+            throw NUT07Error.stateCheckFailed("No result returned for proof")
+        }
+        return result
+    }
+    
+    /// Check states of proofs by their Y values (NUT-07)
+    /// - Parameter yValues: Array of Y values to check
+    /// - Returns: PostCheckStateResponse with the state information
+    public func checkStates(yValues: [String]) async throws -> PostCheckStateResponse {
+        guard isReady else {
+            throw CashuError.walletNotInitialized
+        }
+        
+        guard !yValues.isEmpty else {
+            throw CashuError.validationFailed
+        }
+        
+        let request = PostCheckStateRequest(Ys: yValues)
+        return try await executeCheckState(request)
+    }
+    
+    /// Check if mint supports token state checking (NUT-07)
+    /// - Returns: True if NUT-07 is supported
+    public func supportsStateCheck() -> Bool {
+        return currentMintInfo?.isNUTSupported("7") ?? false
+    }
+    
+    /// Execute the checkstate API call
+    private func executeCheckState(_ request: PostCheckStateRequest) async throws -> PostCheckStateResponse {
+        guard supportsStateCheck() else {
+            throw CashuError.nutNotImplemented("NUT-07")
+        }
+        
+        guard let checkStateService = checkStateService else {
+            throw CashuError.nutNotImplemented("NUT-07 service not initialized")
+        }
+        
+        return try await checkStateService.checkStates(yValues: request.Ys, from: configuration.mintURL)
+    }
+    
     // MARK: - Utility Methods
     
     /// Get mint information
@@ -653,6 +737,7 @@ public actor CashuWallet {
         swapService = await SwapService()
         keyExchangeService = await KeyExchangeService()
         keysetManagementService = await KeysetManagementService()
+        checkStateService = await CheckStateService()
     }
     
     /// Sync keysets with mint
@@ -946,3 +1031,4 @@ extension Collection where Element == Proof {
         return counts
     }
 }
+
