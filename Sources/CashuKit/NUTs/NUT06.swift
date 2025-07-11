@@ -259,6 +259,11 @@ public struct MintInfo: CashuCodabale {
         guard let settings = getNUT04Settings() else { return false }
         return settings.isSupported(method: method, unit: unit)
     }
+    
+    /// Check if mint supports NUT-09 (Restore signatures)
+    public func supportsRestoreSignatures() -> Bool {
+        return isNUTSupported("9")
+    }
 }
 
 // MARK: - NUT-05 settings structure
@@ -303,6 +308,7 @@ public struct MintCapabilities: Sendable {
     public let supportsMelting: Bool
     public let supportsSwapping: Bool
     public let supportsStateCheck: Bool
+    public let supportsRestoreSignatures: Bool
     public let mintMethods: [String]
     public let meltMethods: [String]
     public let supportedUnits: [String]
@@ -317,6 +323,7 @@ public struct MintCapabilities: Sendable {
         supportsMelting: Bool,
         supportsSwapping: Bool,
         supportsStateCheck: Bool,
+        supportsRestoreSignatures: Bool,
         mintMethods: [String],
         meltMethods: [String],
         supportedUnits: [String],
@@ -330,6 +337,7 @@ public struct MintCapabilities: Sendable {
         self.supportsMelting = supportsMelting
         self.supportsSwapping = supportsSwapping
         self.supportsStateCheck = supportsStateCheck
+        self.supportsRestoreSignatures = supportsRestoreSignatures
         self.mintMethods = mintMethods
         self.meltMethods = meltMethods
         self.supportedUnits = supportedUnits
@@ -346,6 +354,7 @@ public struct MintCapabilities: Sendable {
         self.supportsMelting = mintInfo.getNUT05Settings() != nil
         self.supportsSwapping = mintInfo.isNUTSupported("3")
         self.supportsStateCheck = mintInfo.isNUTSupported("7")
+        self.supportsRestoreSignatures = mintInfo.supportsRestoreSignatures()
         self.mintMethods = mintInfo.getNUT04Settings()?.supportedMethods ?? []
         self.meltMethods = mintInfo.getNUT05Settings()?.supportedMethods ?? []
         
@@ -377,6 +386,7 @@ public struct MintCapabilities: Sendable {
         if supportsMelting { features.append("Melting") }
         if supportsSwapping { features.append("Swapping") }
         if supportsStateCheck { features.append("State Check") }
+        if supportsRestoreSignatures { features.append("Restore Signatures") }
         
         return features.joined(separator: ", ")
     }
