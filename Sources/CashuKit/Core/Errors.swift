@@ -7,8 +7,18 @@
 
 import Foundation
 
+/// Categories of errors for better handling
+public enum CashuErrorCategory: String, Sendable {
+    case cryptographic = "Cryptographic"
+    case network = "Network"
+    case validation = "Validation"
+    case wallet = "Wallet"
+    case storage = "Storage"
+    case `protocol` = "Protocol"
+}
+
 /// Errors that can occur during Cashu operations
-public enum CashuError: Error {
+public enum CashuError: Error, Sendable {
     // Core cryptographic errors
     case invalidPoint
     case invalidSecretLength
@@ -75,7 +85,7 @@ public enum CashuError: Error {
 
 /// HTTP error response structure as defined in NUT-00
 /// Used when mints respond with HTTP status code 400 and error details
-public struct CashuHTTPError: CashuCodabale, Error {
+public struct CashuHTTPError: CashuCodabale, Error, Sendable {
     /// Error message
     public let detail: String
     /// Error code
@@ -88,6 +98,61 @@ public struct CashuHTTPError: CashuCodabale, Error {
 }
 
 // MARK: - Error Extensions
+
+// MARK: - Error Category
+
+extension CashuError {
+    /// The category of this error
+    public var category: CashuErrorCategory {
+        switch self {
+        case .invalidPoint, .invalidSecretLength, .hashToCurveFailed, .blindingFailed,
+             .unblindingFailed, .verificationFailed, .invalidHexString, .keyGenerationFailed,
+             .invalidSignature, .domainSeperator:
+            return .cryptographic
+            
+        case .networkError, .invalidMintURL, .mintUnavailable, .invalidResponse,
+             .rateLimitExceeded, .httpError:
+            return .network
+            
+        case .invalidTokenFormat, .serializationFailed, .deserializationFailed,
+             .validationFailed, .invalidAmount, .amountTooLarge, .amountTooSmall,
+             .missingRequiredField, .invalidTokenStructure:
+            return .validation
+            
+        case .walletNotInitialized, .walletAlreadyInitialized, .invalidProofSet,
+             .proofAlreadySpent, .proofNotFound, .balanceInsufficient, .noSpendableProofs,
+             .invalidWalletState, .tokenExpired, .tokenAlreadyUsed:
+            return .wallet
+            
+        case .storageError:
+            return .storage
+            
+        case .nutNotImplemented, .invalidNutVersion, .invalidKeysetID, .insufficientFunds,
+             .syncRequired, .operationTimeout, .operationCancelled, .invalidMintConfiguration,
+             .keysetNotFound, .keysetExpired, .unsupportedOperation, .concurrencyError,
+             .unsupportedVersion:
+            return .`protocol`
+        }
+    }
+    
+    /// Whether this error is retryable
+    public var isRetryable: Bool {
+        switch self {
+        case .networkError, .mintUnavailable, .rateLimitExceeded, .operationTimeout:
+            return true
+        case .httpError(_, let code):
+            return code >= 500 || code == 429
+        default:
+            return false
+        }
+    }
+    
+    /// Error code for debugging
+    public var code: String {
+        let mirror = Mirror(reflecting: self)
+        return "CASHU_\(String(describing: mirror.children.first?.label ?? "UNKNOWN").uppercased())"
+    }
+}
 
 extension CashuError: LocalizedError {
     public var errorDescription: String? {
@@ -206,12 +271,17 @@ extension CashuError: LocalizedError {
     
     public var recoverySuggestion: String? {
         switch self {
-        case .walletNotInitialized:
-            return "Initialize the wallet before performing operations"
-        case .syncRequired:
-            return "Sync the wallet with the mint"
-        case .balanceInsufficient:
-            return "Add more funds to your wallet"
+        // Cryptographic errors
+        case .invalidSecretLength:
+            return "Ensure the secret has the correct length for the cryptographic operation"
+        case .hashToCurveFailed:
+            return "Verify the input data is properly formatted"
+        case .verificationFailed:
+            return "Ensure you're using the correct keyset and the proof hasn't been tampered with"
+        case .invalidHexString:
+            return "Provide a valid hexadecimal string (0-9, A-F)"
+            
+        // Network errors
         case .networkError:
             return "Check your network connection and try again"
         case .mintUnavailable:
@@ -219,13 +289,42 @@ extension CashuError: LocalizedError {
         case .rateLimitExceeded:
             return "Wait a moment before trying again"
         case .invalidMintURL:
-            return "Verify the mint URL is correct"
+            return "Verify the mint URL is correct and includes the protocol (https://)"
+        case .httpError(_, let code) where code == 429:
+            return "You're making too many requests. Please wait before trying again"
+        case .httpError(_, let code) where code >= 500:
+            return "The mint is experiencing issues. Try again later"
+            
+        // Validation errors
+        case .invalidTokenFormat:
+            return "Ensure the token follows the Cashu token format specification"
+        case .validationFailed:
+            return "Check that all required fields are present and properly formatted"
+        case .amountTooLarge:
+            return "Use a smaller amount or split into multiple transactions"
+        case .amountTooSmall:
+            return "Use a larger amount that meets the minimum requirement"
+            
+        // Wallet errors
+        case .walletNotInitialized:
+            return "Initialize the wallet before performing operations"
+        case .syncRequired:
+            return "Sync the wallet with the mint to get the latest state"
+        case .balanceInsufficient:
+            return "Add more funds to your wallet or use a smaller amount"
         case .keysetExpired:
-            return "Sync the wallet to get updated keysets"
+            return "Sync the wallet to get updated keysets from the mint"
         case .tokenExpired:
-            return "Use a valid, non-expired token"
+            return "Request a new token as this one has expired"
         case .operationTimeout:
-            return "Try the operation again"
+            return "Check your connection and try the operation again"
+        case .proofAlreadySpent:
+            return "This proof has been used. Sync your wallet to update your balance"
+        case .noSpendableProofs:
+            return "Consolidate your proofs or add more funds to your wallet"
+        case .unsupportedVersion:
+            return "Update your wallet software to support this version"
+            
         default:
             return nil
         }
@@ -233,22 +332,67 @@ extension CashuError: LocalizedError {
     
     public var failureReason: String? {
         switch self {
-        case .walletNotInitialized:
-            return "Wallet operations require initialization"
-        case .balanceInsufficient:
-            return "Not enough funds available"
+        // Cryptographic errors
+        case .blindingFailed:
+            return "The blinding factor could not be applied to the message"
+        case .unblindingFailed:
+            return "The blind signature could not be converted to a valid signature"
+        case .keyGenerationFailed:
+            return "Cryptographic keys could not be generated"
+            
+        // Network errors
         case .networkError:
             return "Network communication failed"
         case .mintUnavailable:
             return "Mint server is not responding"
+        case .httpError(_, let code) where code == 404:
+            return "The requested endpoint does not exist"
+        case .httpError(_, let code) where code == 401:
+            return "Authentication failed or required"
+            
+        // Validation errors
         case .invalidTokenFormat:
             return "Token format does not match expected structure"
+        case .missingRequiredField:
+            return "A required field is not present in the data"
+            
+        // Wallet errors
+        case .walletNotInitialized:
+            return "Wallet operations require initialization"
+        case .balanceInsufficient:
+            return "Not enough funds available for this operation"
         case .proofAlreadySpent:
-            return "Proof has already been used"
+            return "Proof has already been redeemed at the mint"
         case .keysetNotFound:
-            return "Required keyset is not available"
+            return "The mint's signing keys are not available"
+        case .invalidWalletState:
+            return "The wallet is in an inconsistent state"
+            
         default:
             return nil
         }
+    }
+    
+    /// User info dictionary for NSError bridging
+    public var errorUserInfo: [String: Any] {
+        var userInfo: [String: Any] = [:]
+        
+        if let description = errorDescription {
+            userInfo[NSLocalizedDescriptionKey] = description
+        }
+        
+        if let reason = failureReason {
+            userInfo[NSLocalizedFailureReasonErrorKey] = reason
+        }
+        
+        if let suggestion = recoverySuggestion {
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = suggestion
+        }
+        
+        userInfo["category"] = category.rawValue
+        userInfo["code"] = code
+        userInfo["isRetryable"] = isRetryable
+        
+        return userInfo
     }
 }

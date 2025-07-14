@@ -32,7 +32,7 @@ public struct RestoreSignatureService: Sendable {
     /// - Throws: CashuError if the request fails or response is invalid
     public func restoreSignatures(request: PostRestoreRequest, mintURL: String) async throws -> PostRestoreResponse {
         // Validate and set the mint URL
-        let normalizedURL = try normalizeMintURL(mintURL)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         let response: PostRestoreResponse = try await router.execute(.restore(request))
@@ -66,31 +66,6 @@ public struct RestoreSignatureService: Sendable {
         return pairs.first?.signature
     }
     
-    // MARK: - Utility Methods (Non-isolated)
-    
-    /// Normalize a mint URL (add scheme if missing, remove trailing slash)
-    /// - Parameter mintURL: The URL to normalize
-    /// - Returns: Normalized URL
-    private nonisolated func normalizeMintURL(_ mintURL: String) throws -> String {
-        var normalizedURL = mintURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Add https:// if no scheme is present
-        if !normalizedURL.contains("://") {
-            normalizedURL = "https://" + normalizedURL
-        }
-        
-        // Remove trailing slash
-        if normalizedURL.hasSuffix("/") {
-            normalizedURL = String(normalizedURL.dropLast())
-        }
-        
-        // Validate the normalized URL
-        guard URL(string: normalizedURL) != nil else {
-            throw CashuError.invalidMintURL
-        }
-        
-        return normalizedURL
-    }
 }
 
 // MARK: - API Endpoint Definition

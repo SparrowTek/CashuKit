@@ -254,7 +254,7 @@ public struct KeysetManagementService: Sendable {
     /// - parameter mintURL: The base URL of the mint
     /// - returns: GetKeysetsResponse with keyset information
     public func getKeysets(from mintURL: String) async throws -> GetKeysetsResponse {
-        let normalizedURL = try normalizeMintURL(mintURL)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         return try await router.execute(.getKeysets)
@@ -515,29 +515,6 @@ public struct KeysetManagementService: Sendable {
     }
     
     // MARK: - Utility Methods
-    
-    /// Normalize mint URL
-    private nonisolated func normalizeMintURL(_ mintURL: String) throws -> String {
-        var normalizedURL = mintURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        if !normalizedURL.contains("://") {
-            normalizedURL = "https://" + normalizedURL
-        }
-        
-        if normalizedURL.hasSuffix("/") {
-            normalizedURL = String(normalizedURL.dropLast())
-        }
-        
-        guard let url = URL(string: normalizedURL),
-              let scheme = url.scheme,
-              ["http", "https"].contains(scheme.lowercased()),
-              let host = url.host,
-              !host.isEmpty else {
-            throw CashuError.invalidMintURL
-        }
-        
-        return normalizedURL
-    }
 }
 
 // MARK: - API Endpoints (NUT-02 specific)

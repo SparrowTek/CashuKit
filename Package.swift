@@ -24,6 +24,12 @@ let package = Package(
             name: "CashuKit",
             dependencies: [
                 .product(name: "P256K", package: "swift-secp256k1"),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("ExistentialAny"),
+                .enableUpcomingFeature("IsolatedDefaultValues"),
+                .enableUpcomingFeature("ConciseMagicFile"),
+                .unsafeFlags(["-strict-concurrency=complete"], .when(configuration: .debug))
             ]
         ),
         .testTarget(

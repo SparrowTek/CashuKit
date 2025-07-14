@@ -27,7 +27,7 @@ public struct MintInfoService: Sendable {
     /// - returns: a `MintInfo` object
     public func getMintInfo(from mintURL: String) async throws -> MintInfo {
         // Validate and normalize the mint URL
-        let normalizedURL = try normalizeMintURL(mintURL)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         
         // Set the base URL for this request
         CashuEnvironment.current.setup(baseURL: normalizedURL)
@@ -132,44 +132,10 @@ public struct MintInfoService: Sendable {
     /// - Parameter mintURL: The URL to validate
     /// - Returns: True if valid, false otherwise
     public nonisolated func validateMintURL(_ mintURL: String) -> Bool {
-        guard let url = URL(string: mintURL) else { return false }
-        
-        // Must have a scheme (http or https)
-        guard let scheme = url.scheme, ["http", "https"].contains(scheme.lowercased()) else {
-            return false
-        }
-        
-        // Must have a host
-        guard let host = url.host, !host.isEmpty else { return false }
-        
-        return true
+        return ValidationUtils.validateMintURL(mintURL).isValid
     }
     
     // MARK: - Utility Methods (Non-isolated)
-    
-    /// Normalize a mint URL (add scheme if missing, remove trailing slash)
-    /// - Parameter mintURL: The URL to normalize
-    /// - Returns: Normalized URL
-    private nonisolated func normalizeMintURL(_ mintURL: String) throws -> String {
-        var normalizedURL = mintURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Add https:// if no scheme is present
-        if !normalizedURL.contains("://") {
-            normalizedURL = "https://" + normalizedURL
-        }
-        
-        // Remove trailing slash
-        if normalizedURL.hasSuffix("/") {
-            normalizedURL = String(normalizedURL.dropLast())
-        }
-        
-        // Validate the normalized URL
-        guard validateMintURL(normalizedURL) else {
-            throw CashuError.invalidMintURL
-        }
-        
-        return normalizedURL
-    }
     
     /// Create a mock mint info for testing
     /// - Parameter pubkey: The mint's public key

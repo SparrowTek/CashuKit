@@ -167,13 +167,14 @@ public struct SwapService: Sendable {
     ///   - mintURL: The base URL of the mint
     /// - returns: PostSwapResponse with blind signatures
     public func executeSwap(_ request: PostSwapRequest, at mintURL: String) async throws -> PostSwapResponse {
-        // Validate request
-        guard request.validate() else {
+        // Enhanced validation using NUTValidation
+        let validation = NUTValidation.validateSwapRequest(request)
+        guard validation.isValid else {
             throw CashuError.validationFailed
         }
         
         // Setup networking
-        let normalizedURL = try normalizeMintURL(mintURL)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         // Execute swap

@@ -373,13 +373,14 @@ public struct MeltService: Sendable {
     ) async throws -> PostMeltQuoteResponse {
         let quoteRequest = PostMeltQuoteRequest(request: request, unit: unit)
         
-        // Validate request
-        guard quoteRequest.validate() else {
+        // Enhanced validation using NUTValidation
+        let validation = NUTValidation.validateMeltQuoteRequest(quoteRequest)
+        guard validation.isValid else {
             throw CashuError.validationFailed
         }
         
         // Setup networking
-        let normalizedURL = try normalizeMintURL(mintURL)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         // Request quote
@@ -398,7 +399,7 @@ public struct MeltService: Sendable {
         at mintURL: String
     ) async throws -> PostMeltQuoteResponse {
         // Setup networking
-        let normalizedURL = try normalizeMintURL(mintURL)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         return try await router.execute(.checkMeltQuote(method.rawValue, quoteID))
@@ -416,12 +417,25 @@ public struct MeltService: Sendable {
         at mintURL: String
     ) async throws -> PostMeltResponse {
         // Validate request
+        // Enhanced validation
         guard request.validate() else {
             throw CashuError.validationFailed
         }
         
+        // Validate inputs array
+        let inputValidation = NUTValidation.validateProofs(request.inputs)
+        guard inputValidation.isValid else {
+            throw CashuError.validationFailed
+        }
+        
+        // Validate quote ID
+        let quoteValidation = NUTValidation.validateQuoteID(request.quote)
+        guard quoteValidation.isValid else {
+            throw CashuError.validationFailed
+        }
+        
         // Setup networking
-        let normalizedURL = try normalizeMintURL(mintURL)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         // Execute melt (this may block for external payments)

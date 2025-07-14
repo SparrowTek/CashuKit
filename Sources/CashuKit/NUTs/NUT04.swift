@@ -292,11 +292,19 @@ public struct MintService: Sendable {
     ///   - mintURL: The base URL of the mint
     /// - returns: MintQuoteResponse with quote information
     public func requestMintQuote(_ request: MintQuoteRequest, method: String, at mintURL: String) async throws -> MintQuoteResponse {
-        guard request.validate() else {
+        // Enhanced validation using NUTValidation
+        let validation = NUTValidation.validateMintQuoteRequest(request)
+        guard validation.isValid else {
             throw CashuError.validationFailed
         }
         
-        let normalizedURL = try normalizeMintURL(mintURL)
+        // Validate method parameter
+        let sanitizedMethod = NUTValidation.sanitizeStringInput(method)
+        guard !sanitizedMethod.isEmpty && sanitizedMethod.count <= 20 else {
+            throw CashuError.validationFailed
+        }
+        
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         return try await router.execute(.mintQuote(method: method, request: request))
@@ -309,7 +317,7 @@ public struct MintService: Sendable {
     ///   - mintURL: The base URL of the mint
     /// - returns: MintQuoteResponse with current state
     public func checkMintQuote(_ quoteID: String, method: String, at mintURL: String) async throws -> MintQuoteResponse {
-        let normalizedURL = try normalizeMintURL(mintURL)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         return try await router.execute(.checkMintQuote(method: method, quoteID: quoteID))
@@ -322,11 +330,24 @@ public struct MintService: Sendable {
     ///   - mintURL: The base URL of the mint
     /// - returns: MintResponse with blind signatures
     public func executeMint(_ request: MintRequest, method: String, at mintURL: String) async throws -> MintResponse {
+        // Enhanced validation
         guard request.validate() else {
             throw CashuError.validationFailed
         }
         
-        let normalizedURL = try normalizeMintURL(mintURL)
+        // Validate outputs array
+        let outputValidation = NUTValidation.validateBlindedMessages(request.outputs)
+        guard outputValidation.isValid else {
+            throw CashuError.validationFailed
+        }
+        
+        // Validate method parameter
+        let sanitizedMethod = NUTValidation.sanitizeStringInput(method)
+        guard !sanitizedMethod.isEmpty && sanitizedMethod.count <= 20 else {
+            throw CashuError.validationFailed
+        }
+        
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         return try await router.execute(.mint(method: method, request: request))

@@ -290,26 +290,6 @@ public struct RetryUtils: Sendable {
 
 // MARK: - Retry Extensions
 
-extension CashuError {
-    /// Check if this error is retryable
-    public var isRetryable: Bool {
-        switch self {
-        case .networkError:
-            return true
-        case .mintUnavailable:
-            return true
-        case .rateLimitExceeded:
-            return true
-        case .operationTimeout:
-            return true
-        case .httpError(_, let code):
-            return code >= 500
-        default:
-            return false
-        }
-    }
-}
-
 // MARK: - Async Extensions
 
 extension Task where Success == Never, Failure == Never {
