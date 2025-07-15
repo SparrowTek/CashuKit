@@ -264,6 +264,11 @@ public struct MintInfo: CashuCodabale {
     public func supportsRestoreSignatures() -> Bool {
         return isNUTSupported("9")
     }
+    
+    /// Check if mint supports NUT-10 (Spending conditions)
+    public func supportsSpendingConditions() -> Bool {
+        return isNUTSupported("10")
+    }
 }
 
 // MARK: - NUT-05 settings structure
