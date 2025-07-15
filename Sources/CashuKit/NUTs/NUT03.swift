@@ -44,7 +44,7 @@ public struct PostSwapRequest: CashuCodabale {
         // Basic validation for outputs
         for output in outputs {
             guard output.amount > 0,
-                  !output.id.isEmpty,
+                  let outputId = output.id, !outputId.isEmpty,
                   !output.B_.isEmpty else {
                 return false
             }
@@ -519,7 +519,10 @@ public struct SwapService: Sendable {
         let activeKeysets = try await keysetManagementService.getActiveKeysets(from: mintURL)
         let activeKeysetIDs = Set(activeKeysets.map { $0.id })
         
-        return outputs.allSatisfy { activeKeysetIDs.contains($0.id) }
+        return outputs.allSatisfy { output in
+            guard let outputId = output.id else { return false }
+            return activeKeysetIDs.contains(outputId)
+        }
     }
 }
 

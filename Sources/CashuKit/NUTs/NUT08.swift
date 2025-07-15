@@ -298,7 +298,7 @@ public struct PostMeltRequestWithFeeReturn: CashuCodabale {
         // Validate outputs if provided
         if let outputs = outputs {
             for output in outputs {
-                guard !output.id.isEmpty,
+                guard let outputId = output.id, !outputId.isEmpty,
                       !output.B_.isEmpty else {
                     return false
                 }

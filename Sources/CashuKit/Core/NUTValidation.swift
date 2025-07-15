@@ -214,10 +214,12 @@ public struct NUTValidation: Sendable {
                 errors.append("Invalid B_ format at index \(index): \(hexValidation.errors.joined(separator: ", "))")
             }
             
-            // Validate keyset ID
-            let keysetValidation = validateKeysetID(message.id)
-            if !keysetValidation.isValid {
-                errors.append("Invalid keyset ID at index \(index): \(keysetValidation.errors.joined(separator: ", "))")
+            // Validate keyset ID if present
+            if let keysetId = message.id {
+                let keysetValidation = validateKeysetID(keysetId)
+                if !keysetValidation.isValid {
+                    errors.append("Invalid keyset ID at index \(index): \(keysetValidation.errors.joined(separator: ", "))")
+                }
             }
         }
         

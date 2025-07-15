@@ -103,7 +103,7 @@ public struct MintRequest: CashuCodabale {
         
         for output in outputs {
             guard output.amount > 0,
-                  !output.id.isEmpty,
+                  let outputId = output.id, !outputId.isEmpty,
                   !output.B_.isEmpty else {
                 return false
             }

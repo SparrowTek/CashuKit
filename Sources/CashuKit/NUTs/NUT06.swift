@@ -269,6 +269,11 @@ public struct MintInfo: CashuCodabale {
     public func supportsSpendingConditions() -> Bool {
         return isNUTSupported("10")
     }
+    
+    /// Check if mint supports NUT-11 (Pay-to-Public-Key)
+    public func supportsP2PK() -> Bool {
+        return isNUTSupported("11")
+    }
 }
 
 // MARK: - NUT-05 settings structure

@@ -160,7 +160,7 @@ public struct PostMeltRequest: CashuCodabale {
         // Validate outputs if provided (NUT-08)
         if let outputs = outputs {
             for output in outputs {
-                guard !output.id.isEmpty,
+                guard let outputId = output.id, !outputId.isEmpty,
                       !output.B_.isEmpty else {
                     return false
                 }
