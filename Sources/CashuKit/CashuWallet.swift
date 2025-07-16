@@ -161,6 +161,11 @@ public actor CashuWallet {
         walletState
     }
     
+    /// Get mint URL
+    public var mintURL: String {
+        configuration.mintURL
+    }
+    
     /// Check if wallet is ready for operations
     public var isReady: Bool {
         switch walletState {
