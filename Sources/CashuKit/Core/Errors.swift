@@ -86,6 +86,11 @@ public enum CashuError: Error, Sendable {
     case invalidSecret
     case invalidSignature(String)
     case mismatchedArrayLengths
+    
+    // NUT-14 specific errors
+    case invalidPreimage
+    case locktimeNotExpired
+    case invalidProofType
 }
 
 // MARK: - HTTP Error Response (NUT-00 Specification)
@@ -138,7 +143,8 @@ extension CashuError {
              .syncRequired, .operationTimeout, .operationCancelled, .invalidMintConfiguration,
              .keysetNotFound, .keysetExpired, .unsupportedOperation, .concurrencyError,
              .unsupportedVersion, .invalidMnemonic, .invalidSecret,
-             .invalidSignature, .mismatchedArrayLengths:
+             .invalidSignature, .mismatchedArrayLengths, .invalidPreimage,
+             .locktimeNotExpired, .invalidProofType:
             return .`protocol`
         }
     }
@@ -284,6 +290,14 @@ extension CashuError: LocalizedError {
             return "Invalid signature: \(message)"
         case .mismatchedArrayLengths:
             return "Mismatched array lengths"
+            
+        // NUT-14 errors
+        case .invalidPreimage:
+            return "Invalid preimage: must be 32 bytes"
+        case .locktimeNotExpired:
+            return "HTLC locktime has not expired yet"
+        case .invalidProofType:
+            return "Proof is not an HTLC type"
         }
     }
     
