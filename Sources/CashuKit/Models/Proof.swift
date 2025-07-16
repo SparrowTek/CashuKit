@@ -13,13 +13,15 @@ public struct Proof: CashuCodabale {
     public let secret: String
     public let C: String
     public let witness: String?
+    public let dleq: DLEQProof?
     
-    public init(amount: Int, id: String, secret: String, C: String, witness: String? = nil) {
+    public init(amount: Int, id: String, secret: String, C: String, witness: String? = nil, dleq: DLEQProof? = nil) {
         self.amount = amount
         self.id = id
         self.secret = secret
         self.C = C
         self.witness = witness
+        self.dleq = dleq
     }
     
     public func getWellKnownSecret() -> WellKnownSecret? {

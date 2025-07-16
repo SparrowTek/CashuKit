@@ -274,6 +274,11 @@ public struct MintInfo: CashuCodabale {
     public func supportsP2PK() -> Bool {
         return isNUTSupported("11")
     }
+    
+    /// Check if mint supports NUT-12 (Offline ecash signature validation)
+    public func supportsOfflineSignatureValidation() -> Bool {
+        return isNUTSupported("12")
+    }
 }
 
 // MARK: - NUT-05 settings structure

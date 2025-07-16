@@ -79,6 +79,7 @@ public enum CashuError: Error, Sendable {
     case unsupportedOperation(String)
     case concurrencyError(String)
     case unsupportedVersion
+    case missingBlindingFactor
 }
 
 // MARK: - HTTP Error Response (NUT-00 Specification)
@@ -107,7 +108,7 @@ extension CashuError {
         switch self {
         case .invalidPoint, .invalidSecretLength, .hashToCurveFailed, .blindingFailed,
              .unblindingFailed, .verificationFailed, .invalidHexString, .keyGenerationFailed,
-             .invalidSignature, .domainSeperator:
+             .invalidSignature, .domainSeperator, .missingBlindingFactor:
             return .cryptographic
             
         case .networkError, .invalidMintURL, .mintUnavailable, .invalidResponse,
@@ -266,6 +267,8 @@ extension CashuError: LocalizedError {
             return "Concurrency error: \(message)"
         case .unsupportedVersion:
             return "Unsupported version"
+        case .missingBlindingFactor:
+            return "Missing blinding factor for DLEQ proof verification"
         }
     }
     
