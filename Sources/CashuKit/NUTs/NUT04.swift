@@ -445,7 +445,7 @@ public struct MintService: Sendable {
             let mintKeyKey = "\(signature.id)_\(signature.amount)"
             
             guard let mintPublicKey = mintKeys[mintKeyKey] else {
-                throw CashuError.invalidSignature
+                throw CashuError.invalidSignature("Mint public key not found for amount \(signature.amount)")
             }
             
             guard let blindedSignatureData = Data(hexString: signature.C_) else {

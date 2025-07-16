@@ -28,7 +28,6 @@ public enum CashuError: Error, Sendable {
     case verificationFailed
     case invalidHexString
     case keyGenerationFailed
-    case invalidSignature
     case domainSeperator
     
     // Network and API errors
@@ -56,6 +55,7 @@ public enum CashuError: Error, Sendable {
     // Wallet-specific errors
     case walletNotInitialized
     case walletAlreadyInitialized
+    case walletNotInitializedWithMnemonic
     case invalidProofSet
     case proofAlreadySpent
     case proofNotFound
@@ -80,6 +80,12 @@ public enum CashuError: Error, Sendable {
     case concurrencyError(String)
     case unsupportedVersion
     case missingBlindingFactor
+    
+    // NUT-13 specific errors
+    case invalidMnemonic
+    case invalidSecret
+    case invalidSignature(String)
+    case mismatchedArrayLengths
 }
 
 // MARK: - HTTP Error Response (NUT-00 Specification)
@@ -120,9 +126,9 @@ extension CashuError {
              .missingRequiredField, .invalidTokenStructure:
             return .validation
             
-        case .walletNotInitialized, .walletAlreadyInitialized, .invalidProofSet,
-             .proofAlreadySpent, .proofNotFound, .balanceInsufficient, .noSpendableProofs,
-             .invalidWalletState, .tokenExpired, .tokenAlreadyUsed:
+        case .walletNotInitialized, .walletAlreadyInitialized, .walletNotInitializedWithMnemonic,
+             .invalidProofSet, .proofAlreadySpent, .proofNotFound, .balanceInsufficient, 
+             .noSpendableProofs, .invalidWalletState, .tokenExpired, .tokenAlreadyUsed:
             return .wallet
             
         case .storageError:
@@ -131,7 +137,8 @@ extension CashuError {
         case .nutNotImplemented, .invalidNutVersion, .invalidKeysetID, .insufficientFunds,
              .syncRequired, .operationTimeout, .operationCancelled, .invalidMintConfiguration,
              .keysetNotFound, .keysetExpired, .unsupportedOperation, .concurrencyError,
-             .unsupportedVersion:
+             .unsupportedVersion, .invalidMnemonic, .invalidSecret,
+             .invalidSignature, .mismatchedArrayLengths:
             return .`protocol`
         }
     }
@@ -175,8 +182,6 @@ extension CashuError: LocalizedError {
             return "Invalid hexadecimal string"
         case .keyGenerationFailed:
             return "Key generation failed"
-        case .invalidSignature:
-            return "Invalid signature"
         case .domainSeperator:
             return "Domain separator error"
             
@@ -269,6 +274,16 @@ extension CashuError: LocalizedError {
             return "Unsupported version"
         case .missingBlindingFactor:
             return "Missing blinding factor for DLEQ proof verification"
+        case .walletNotInitializedWithMnemonic:
+            return "Wallet was not initialized with a mnemonic phrase"
+        case .invalidMnemonic:
+            return "Invalid mnemonic phrase"
+        case .invalidSecret:
+            return "Invalid secret"
+        case .invalidSignature(let message):
+            return "Invalid signature: \(message)"
+        case .mismatchedArrayLengths:
+            return "Mismatched array lengths"
         }
     }
     

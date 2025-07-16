@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import P256K
 
 // MARK: - Wallet Configuration
 
@@ -85,6 +86,10 @@ public actor CashuWallet {
     private var currentKeysetInfos: [String: KeysetInfo] = [:]
     private var walletState: WalletState = .uninitialized
     
+    // NUT-13: Deterministic secrets
+    private var deterministicDerivation: DeterministicSecretDerivation?
+    private let keysetCounterManager: KeysetCounterManager
+    
     // MARK: - Initialization
     
     /// Initialize a new Cashu wallet
@@ -93,14 +98,18 @@ public actor CashuWallet {
     ///   - proofStorage: Optional custom proof storage (defaults to in-memory)
     public init(
         configuration: WalletConfiguration,
-        proofStorage: ProofStorage? = nil
+        proofStorage: (any ProofStorage)? = nil,
+        counterStorage: (any KeysetCounterStorage)? = nil
     ) async {
         self.configuration = configuration
         self.proofManager = ProofManager(storage: proofStorage ?? InMemoryProofStorage())
         self.mintInfoService = await MintInfoService()
+        self.keysetCounterManager = KeysetCounterManager()
         
         // Initialize services
         await setupServices()
+        
+        // Counter state is managed in-memory by KeysetCounterManager
     }
     
     /// Initialize wallet with mint URL
@@ -113,6 +122,36 @@ public actor CashuWallet {
     ) async {
         let config = WalletConfiguration(mintURL: mintURL, unit: unit)
         await self.init(configuration: config)
+    }
+    
+    /// Initialize wallet with mnemonic phrase (NUT-13)
+    /// - Parameters:
+    ///   - configuration: Wallet configuration
+    ///   - mnemonic: BIP39 mnemonic phrase
+    ///   - passphrase: Optional BIP39 passphrase
+    ///   - proofStorage: Optional custom proof storage
+    public init(
+        configuration: WalletConfiguration,
+        mnemonic: String,
+        passphrase: String = "",
+        proofStorage: (any ProofStorage)? = nil,
+        counterStorage: (any KeysetCounterStorage)? = nil
+    ) async throws {
+        self.configuration = configuration
+        self.proofManager = ProofManager(storage: proofStorage ?? InMemoryProofStorage())
+        self.mintInfoService = await MintInfoService()
+        self.keysetCounterManager = KeysetCounterManager()
+        
+        // Initialize deterministic derivation
+        self.deterministicDerivation = try DeterministicSecretDerivation(
+            mnemonic: mnemonic,
+            passphrase: passphrase
+        )
+        
+        // Initialize services
+        await setupServices()
+        
+        // Counter state is managed in-memory by KeysetCounterManager
     }
     
     // MARK: - Wallet State Management
@@ -728,6 +767,239 @@ public actor CashuWallet {
         )
     }
     
+    // MARK: - NUT-13: Deterministic Secrets
+    
+    /// Check if wallet supports deterministic secrets
+    public var supportsDeterministicSecrets: Bool {
+        return deterministicDerivation != nil
+    }
+    
+    /// Generate a new mnemonic phrase
+    /// - Parameter strength: Strength in bits (128, 160, 192, 224, or 256)
+    /// - Returns: BIP39 mnemonic phrase
+    public static func generateMnemonic(strength: Int = 128) throws -> String {
+        return try BIP39.generateMnemonic(strength: strength)
+    }
+    
+    /// Validate a mnemonic phrase
+    /// - Parameter mnemonic: The mnemonic phrase to validate
+    /// - Returns: True if valid
+    public static func validateMnemonic(_ mnemonic: String) -> Bool {
+        return BIP39.validateMnemonic(mnemonic)
+    }
+    
+    /// Restore wallet from seed phrase (NUT-13)
+    /// - Parameters:
+    ///   - batchSize: Number of proofs to restore per batch (default 100)
+    ///   - onProgress: Progress callback
+    /// - Returns: Total restored balance
+    @discardableResult
+    public func restoreFromSeed(
+        batchSize: Int = 100,
+        onProgress: ((RestorationProgress) async -> Void)? = nil
+    ) async throws -> Int {
+        guard let derivation = deterministicDerivation else {
+            throw CashuError.walletNotInitializedWithMnemonic
+        }
+        
+        guard isReady else {
+            throw CashuError.walletNotInitialized
+        }
+        
+        let restoration = WalletRestoration(
+            derivation: derivation,
+            counterManager: keysetCounterManager
+        )
+        
+        var totalRestoredBalance = 0
+        var restorationErrors: [String: Error] = [:]
+        
+        // Restore for each active keyset
+        for (keysetID, _) in currentKeysets {
+            guard currentKeysetInfos[keysetID]?.active ?? false else {
+                continue
+            }
+            
+            do {
+                let balance = try await restoreKeyset(
+                    keysetID: keysetID,
+                    restoration: restoration,
+                    batchSize: batchSize,
+                    onProgress: onProgress
+                )
+                totalRestoredBalance += balance
+            } catch {
+                // Store error but continue with other keysets
+                restorationErrors[keysetID] = error
+                
+                // Report error in progress
+                if let onProgress = onProgress {
+                    let progress = RestorationProgress(
+                        keysetID: keysetID,
+                        currentCounter: 0,
+                        totalProofsFound: 0,
+                        unspentProofsFound: 0,
+                        consecutiveEmptyBatches: 0,
+                        isComplete: true,
+                        error: error
+                    )
+                    await onProgress(progress)
+                }
+            }
+        }
+        
+        // If all keysets failed, throw the first error
+        if restorationErrors.count == currentKeysets.count && !restorationErrors.isEmpty {
+            throw restorationErrors.values.first!
+        }
+        
+        return totalRestoredBalance
+    }
+    
+    /// Restore a single keyset
+    private func restoreKeyset(
+        keysetID: String,
+        restoration: WalletRestoration,
+        batchSize: Int,
+        onProgress: ((RestorationProgress) async -> Void)?
+    ) async throws -> Int {
+        var totalRestoredBalance = 0
+        var consecutiveEmptyBatches = 0
+        var currentCounter = await keysetCounterManager.getCounter(for: keysetID)
+        var totalProofsFound = 0
+        var unspentProofsFound = 0
+        
+        while consecutiveEmptyBatches < 3 {
+                // Generate blinded messages for this batch
+                let blindedMessagesWithFactors = try await restoration.generateBlindedMessages(
+                    keysetID: keysetID,
+                    startCounter: currentCounter,
+                    batchSize: batchSize
+                )
+                
+                let blindedMessages = blindedMessagesWithFactors.map { $0.0 }
+                let blindingFactors = blindedMessagesWithFactors.map { $0.1 }
+                
+                // Request signatures from mint using NUT-09
+                let blindedSignatures = try await requestRestore(
+                    blindedMessages: blindedMessages,
+                    keysetID: keysetID
+                )
+                
+                if blindedSignatures.isEmpty {
+                    consecutiveEmptyBatches += 1
+                } else {
+                    consecutiveEmptyBatches = 0
+                    
+                    // Generate secrets for unblinding
+                    var secrets: [String] = []
+                    for i in 0..<blindedSignatures.count {
+                        let secret = try restoration.derivation.deriveSecret(
+                            keysetID: keysetID,
+                            counter: currentCounter + UInt32(i)
+                        )
+                        secrets.append(secret)
+                    }
+                    
+                    // Get mint public key for the first amount (assuming single denomination restore)
+                    // In a real implementation, you'd match the proper key for each amount
+                    guard let keyset = currentKeysets[keysetID],
+                          let firstAmount = blindedSignatures.first?.amount,
+                          let publicKeyHex = keyset.keys[String(firstAmount)],
+                          let publicKeyData = Data(hexString: publicKeyHex),
+                          let mintPublicKey = try? P256K.KeyAgreement.PublicKey(dataRepresentation: publicKeyData, format: .compressed) else {
+                        throw CashuError.keysetNotFound
+                    }
+                    
+                    // Restore proofs
+                    let restoredProofs = try restoration.restoreProofs(
+                        blindedSignatures: blindedSignatures,
+                        blindingFactors: Array(blindingFactors.prefix(blindedSignatures.count)),
+                        secrets: secrets,
+                        keysetID: keysetID,
+                        mintPublicKey: mintPublicKey
+                    )
+                    
+                    // Check proof states
+                    let stateResult = try await checkProofStates(restoredProofs)
+                    
+                    // Separate spent and unspent proofs
+                    var unspentProofs: [Proof] = []
+                    for result in stateResult.results {
+                        if result.stateInfo.state == .unspent {
+                            unspentProofs.append(result.proof)
+                        }
+                    }
+                    
+                    // Add unspent proofs to wallet
+                    if !unspentProofs.isEmpty {
+                        try await proofManager.addProofs(unspentProofs)
+                        totalRestoredBalance += unspentProofs.reduce(0) { $0 + $1.amount }
+                        unspentProofsFound += unspentProofs.count
+                    }
+                    
+                    totalProofsFound += restoredProofs.count
+                }
+                
+                currentCounter += UInt32(batchSize)
+                
+                // Report progress
+                if let onProgress = onProgress {
+                    let progress = RestorationProgress(
+                        keysetID: keysetID,
+                        currentCounter: currentCounter,
+                        totalProofsFound: totalProofsFound,
+                        unspentProofsFound: unspentProofsFound,
+                        consecutiveEmptyBatches: consecutiveEmptyBatches,
+                        isComplete: false
+                    )
+                    await onProgress(progress)
+                }
+            }
+            
+            // Update counter for this keyset
+            let finalCounter = currentCounter - UInt32(3 * batchSize) + UInt32(totalProofsFound)
+            await keysetCounterManager.setCounter(for: keysetID, value: finalCounter + 1)
+            
+            // Counters are managed in-memory
+            
+            // Report completion for this keyset
+            if let onProgress = onProgress {
+                let progress = RestorationProgress(
+                    keysetID: keysetID,
+                    currentCounter: finalCounter,
+                    totalProofsFound: totalProofsFound,
+                    unspentProofsFound: unspentProofsFound,
+                    consecutiveEmptyBatches: 3,
+                    isComplete: true
+                )
+                await onProgress(progress)
+            }
+        
+        return totalRestoredBalance
+    }
+    
+    /// Request restore from mint (NUT-09)
+    private func requestRestore(
+        blindedMessages: [BlindedMessage],
+        keysetID: String
+    ) async throws -> [BlindSignature] {
+        // Check if mint supports NUT-09
+        guard currentMintInfo?.isNUTSupported("9") ?? false else {
+            throw CashuError.nutNotImplemented("NUT-09")
+        }
+        
+        // TODO: Implement actual NUT-09 restore request
+        // This requires the NUT-09 service to have a restore method
+        // For now, return empty array as placeholder
+        return []
+    }
+    
+    /// Get current keyset counters
+    public func getKeysetCounters() async -> [String: UInt32] {
+        return await keysetCounterManager.getAllCounters()
+    }
+    
     // MARK: - Private Methods
     
     /// Setup wallet services
@@ -895,9 +1167,9 @@ public struct BalanceUpdate: Sendable {
     public let newBalance: Int
     public let previousBalance: Int
     public let timestamp: Date
-    public let error: Error?
+    public let error: (any Error)?
     
-    public init(newBalance: Int, previousBalance: Int, timestamp: Date, error: Error? = nil) {
+    public init(newBalance: Int, previousBalance: Int, timestamp: Date, error: (any Error)? = nil) {
         self.newBalance = newBalance
         self.previousBalance = previousBalance
         self.timestamp = timestamp

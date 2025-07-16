@@ -587,7 +587,7 @@ public struct MintKeys {
     /// Verify a proof for a specific amount
     public func verifyProof(_ proof: Proof, for amount: Int) throws -> Bool {
         guard let keypair = keypairs[amount] else {
-            throw CashuError.invalidSignature
+            throw CashuError.invalidSignature("No keypair found for amount \(amount)")
         }
         
         guard let signatureData = Data(hexString: proof.C) else {
