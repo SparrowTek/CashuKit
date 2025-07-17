@@ -21,13 +21,13 @@ public struct WellKnownSecret: Codable, Equatable, Sendable {
         self.secretData = secretData
     }
     
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         var container = try decoder.unkeyedContainer()
         self.kind = try container.decode(String.self)
         self.secretData = try container.decode(SecretData.self)
     }
     
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.unkeyedContainer()
         try container.encode(kind)
         try container.encode(secretData)

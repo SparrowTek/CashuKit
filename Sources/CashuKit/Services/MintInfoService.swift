@@ -60,7 +60,7 @@ public struct MintInfoService: Sendable {
         maxRetries: Int = 3,
         retryDelay: TimeInterval = 1.0
     ) async throws -> MintInfo {
-        var lastError: Error?
+        var lastError: (any Error)?
         
         for attempt in 0...maxRetries {
             do {

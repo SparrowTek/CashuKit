@@ -817,7 +817,7 @@ public actor CashuWallet {
         )
         
         var totalRestoredBalance = 0
-        var restorationErrors: [String: Error] = [:]
+        var restorationErrors: [String: any Error] = [:]
         
         // Restore for each active keyset
         for (keysetID, _) in currentKeysets {

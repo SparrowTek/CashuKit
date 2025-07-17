@@ -19,7 +19,7 @@ enum ParameterEncoding: Sendable {
     case urlEncoding(parameters: Parameters)
     case jsonEncoding(parameters: Parameters)
     case jsonDataEncoding(data: Data?)
-    case jsonEncodableEncoding(encodable: CashuEncodable)
+    case jsonEncodableEncoding(encodable: any CashuEncodable)
     case urlAndJsonEncoding(urlParameters: Parameters, bodyParameters: Parameters)
     
     func encode(urlRequest: inout URLRequest) throws {

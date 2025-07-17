@@ -178,7 +178,7 @@ public struct PartialPaymentResult: Sendable {
     public let success: Bool
     
     /// Error if payment failed
-    public let error: Error?
+    public let error: (any Error)?
     
     /// Change proofs if any
     public let change: [Proof]?
@@ -189,7 +189,7 @@ public struct PartialPaymentResult: Sendable {
     public init(
         mintURL: String,
         success: Bool,
-        error: Error? = nil,
+        error: (any Error)? = nil,
         change: [Proof]? = nil,
         feePaid: Int = 0
     ) {
@@ -338,7 +338,7 @@ extension CashuWallet {
         invoice: String,
         partialAmountMsat: Int
     ) async throws -> PostMeltQuoteResponse {
-        let request = PostMeltQuoteBolt11Request.withMPP(
+        let _ = PostMeltQuoteBolt11Request.withMPP(
             request: invoice,
             unit: "sat",
             partialAmountMsat: partialAmountMsat

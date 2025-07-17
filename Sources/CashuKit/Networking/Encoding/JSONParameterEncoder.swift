@@ -17,7 +17,7 @@ struct JSONParameterEncoder: ParameterEncoder {
         }
     }
     
-    func encode(urlRequest: inout URLRequest, with encodable: CashuEncodable) throws {
+    func encode(urlRequest: inout URLRequest, with encodable: any CashuEncodable) throws {
         do {
             let data = try encodable.toJSONData()
             encode(urlRequest: &urlRequest, with: data)

@@ -212,10 +212,11 @@ public struct ClearAuthToken: Sendable {
     public func isValidForAudience(_ audience: String) -> Bool {
         guard let aud = payload.aud else { return true }
         
-        if let audString = aud as? String {
+        if let audString = aud.stringValue {
             return audString == audience
-        } else if let audArray = aud as? [String] {
-            return audArray.contains(audience)
+        } else if case .array(let audArray) = aud {
+            // Extract string values from the AnyCodable array
+            return audArray.compactMap { $0.stringValue }.contains(audience)
         }
         
         return false
@@ -547,11 +548,11 @@ public struct DeviceAuthorizationResponse: CashuCodabale, Sendable {
 
 /// Service for handling clear authentication
 public actor ClearAuthService: Sendable {
-    private let networkService: NetworkService
+    private let networkService: any NetworkService
     private var tokenStore: [String: OAuthTokenResponse] = [:]
     private var configCache: [String: OpenIDConnectConfig] = [:]
     
-    public init(networkService: NetworkService) {
+    public init(networkService: any NetworkService) {
         self.networkService = networkService
     }
     

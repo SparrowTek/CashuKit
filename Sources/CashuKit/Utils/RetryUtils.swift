@@ -68,14 +68,14 @@ public protocol RetryPolicy: Sendable {
     ///   - error: The error that occurred
     ///   - attempt: Current attempt number (1-based)
     /// - Returns: True if should retry, false otherwise
-    func shouldRetry(error: Error, attempt: Int) -> Bool
+    func shouldRetry(error: any Error, attempt: Int) -> Bool
 }
 
 /// Default retry policy for network operations
 public struct NetworkRetryPolicy: RetryPolicy {
     public init() {}
     
-    public func shouldRetry(error: Error, attempt: Int) -> Bool {
+    public func shouldRetry(error: any Error, attempt: Int) -> Bool {
         // Don't retry client errors (4xx) or validation errors
         if let cashuError = error as? CashuError {
             switch cashuError {
@@ -131,7 +131,7 @@ public struct NetworkRetryPolicy: RetryPolicy {
 public struct StrictRetryPolicy: RetryPolicy {
     public init() {}
     
-    public func shouldRetry(error: Error, attempt: Int) -> Bool {
+    public func shouldRetry(error: any Error, attempt: Int) -> Bool {
         if let cashuError = error as? CashuError {
             switch cashuError {
             case .networkError:
@@ -176,10 +176,10 @@ public struct RetryUtils: Sendable {
     /// - Throws: Last error if all attempts fail
     public static func withRetry<T>(
         configuration: RetryConfiguration = .default,
-        policy: RetryPolicy = NetworkRetryPolicy(),
+        policy: any RetryPolicy = NetworkRetryPolicy(),
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        var lastError: Error?
+        var lastError: (any Error)?
         
         for attempt in 1...configuration.maxAttempts {
             do {

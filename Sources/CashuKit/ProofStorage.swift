@@ -106,10 +106,10 @@ private struct ProofWrapper: Hashable, Sendable {
 /// Manages proof operations and validation
 @CashuActor
 public final class ProofManager: Sendable {
-    private let storage: ProofStorage
+    private let storage: any ProofStorage
     private var spentProofs: Set<ProofWrapper> = []
     
-    public nonisolated init(storage: ProofStorage = InMemoryProofStorage()) {
+    public nonisolated init(storage: any ProofStorage = InMemoryProofStorage()) {
         self.storage = storage
     }
     

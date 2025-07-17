@@ -226,7 +226,7 @@ public enum WsMessage: Sendable {
     case request(WsRequest)
     case response(WsResponse)
     case notification(WsNotification)
-    case error(Error)
+    case error(any Error)
     
     /// Decode a WebSocket message from JSON data
     public static func decode(from data: Data) throws -> WsMessage {
@@ -272,8 +272,8 @@ public actor WebSocketClient {
     private var requestIdCounter = 0
     
     /// Message stream
-    private var messageStream: AsyncThrowingStream<WsMessage, Error>?
-    private var messageContinuation: AsyncThrowingStream<WsMessage, Error>.Continuation?
+    private var messageStream: AsyncThrowingStream<WsMessage, any Error>?
+    private var messageContinuation: AsyncThrowingStream<WsMessage, any Error>.Continuation?
     
     public init(url: URL, session: URLSession = .shared) {
         self.url = url
@@ -288,7 +288,7 @@ public actor WebSocketClient {
         webSocketTask?.resume()
         
         // Create message stream
-        let (stream, continuation) = AsyncThrowingStream<WsMessage, Error>.makeStream()
+        let (stream, continuation) = AsyncThrowingStream<WsMessage, any Error>.makeStream()
         self.messageStream = stream
         self.messageContinuation = continuation
         
@@ -358,7 +358,7 @@ public actor WebSocketClient {
     }
     
     /// Get message stream
-    public func messages() -> AsyncThrowingStream<WsMessage, Error>? {
+    public func messages() -> AsyncThrowingStream<WsMessage, any Error>? {
         return messageStream
     }
     

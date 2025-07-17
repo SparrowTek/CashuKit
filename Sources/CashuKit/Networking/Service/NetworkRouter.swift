@@ -7,7 +7,7 @@ import FoundationNetworking
 @CashuActor
 protocol NetworkRouterDelegate: AnyObject {
     func intercept(_ request: inout URLRequest) async
-    func shouldRetry(error: Error, attempts: Int) async throws -> Bool
+    func shouldRetry(error: any Error, attempts: Int) async throws -> Bool
 }
 
 /// Describes the implementation details of a NetworkRouter
@@ -17,7 +17,7 @@ protocol NetworkRouterDelegate: AnyObject {
 @CashuActor
 protocol NetworkRouterProtocol: AnyObject {
     associatedtype Endpoint: EndpointType
-    var delegate: NetworkRouterDelegate? { get set }
+    var delegate: (any NetworkRouterDelegate)? { get set }
     func execute<T: CashuDecodable>(_ route: Endpoint) async throws -> T
 }
 
@@ -36,12 +36,12 @@ typealias HTTPHeaders = [String:String]
 @CashuActor
 internal class NetworkRouter<Endpoint: EndpointType>: NetworkRouterProtocol {
     
-    weak var delegate: NetworkRouterDelegate?
-    let networking: Networking
-    let urlSessionTaskDelegate: URLSessionTaskDelegate?
+    weak var delegate: (any NetworkRouterDelegate)?
+    let networking: any Networking
+    let urlSessionTaskDelegate: (any URLSessionTaskDelegate)?
     var decoder: JSONDecoder
     
-    init(networking: Networking? = nil, urlSessionDelegate: URLSessionDelegate? = nil, urlSessionTaskDelegate: URLSessionTaskDelegate? = nil, decoder: JSONDecoder? = nil) {
+    init(networking: (any Networking)? = nil, urlSessionDelegate: (any URLSessionDelegate)? = nil, urlSessionTaskDelegate: (any URLSessionTaskDelegate)? = nil, decoder: JSONDecoder? = nil) {
         if let networking = networking {
             self.networking = networking
         } else {

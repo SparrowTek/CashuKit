@@ -320,7 +320,7 @@ extension CashuWallet {
         refundKey: String? = nil
     ) async throws -> [Proof] {
         // Create HTLC secret
-        let htlcSecret = try HTLCCreator.createHTLCSecret(
+        let _ = try HTLCCreator.createHTLCSecret(
             preimage: preimage,
             pubkeys: pubkeys,
             locktime: locktime,

@@ -120,7 +120,7 @@ public enum AnyCodable: CashuCodabale {
         }
     }
     
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         
         switch self {
@@ -139,7 +139,7 @@ public enum AnyCodable: CashuCodabale {
         }
     }
     
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()
         
         if let intValue = try? container.decode(Int.self) {

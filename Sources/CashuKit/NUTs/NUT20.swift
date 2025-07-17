@@ -237,9 +237,9 @@ public struct NUT20SignatureManager: Sendable {
 /// Service for handling NUT-20 signature-based mint quotes
 public actor NUT20MintQuoteService: Sendable {
     private let mintService: MintService
-    private let keyManager: KeyManager
+    private let keyManager: any KeyManager
     
-    public init(mintService: MintService, keyManager: KeyManager) {
+    public init(mintService: MintService, keyManager: any KeyManager) {
         self.mintService = mintService
         self.keyManager = keyManager
     }
@@ -259,7 +259,7 @@ public actor NUT20MintQuoteService: Sendable {
             pubkey = keyPair.publicKey
         }
         
-        let request = NUT20MintQuoteRequest(
+        let _ = NUT20MintQuoteRequest(
             amount: amount,
             unit: unit,
             description: description,
@@ -305,7 +305,7 @@ public actor NUT20MintQuoteService: Sendable {
             )
         }
         
-        let request = NUT20MintRequest(
+        let _ = NUT20MintRequest(
             quote: quote,
             outputs: outputs,
             signature: signature
@@ -473,7 +473,7 @@ extension CashuWallet {
         let keyManager = InMemoryKeyManager()
         
         // Try to get the private key for this quote
-        let privateKey = try await keyManager.getPrivateKey(for: quote)
+        let _ = try await keyManager.getPrivateKey(for: quote)
         
         // Create a mock response for this example
         let mockSignatures = outputs.map { output in

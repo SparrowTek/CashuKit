@@ -36,7 +36,7 @@ public enum NutValue: CashuCodabale {
         return nil
     }
     
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()
         
         if let string = try? container.decode(String.self) {
@@ -53,7 +53,7 @@ public enum NutValue: CashuCodabale {
         }
     }
     
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         
         switch self {

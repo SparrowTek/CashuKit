@@ -270,13 +270,13 @@ public actor InMemoryResponseCache: ResponseCache {
 
 /// Network service with caching support
 public actor CachedNetworkService: Sendable {
-    private let cache: ResponseCache
-    private let networkService: NetworkService
+    private let cache: any ResponseCache
+    private let networkService: any NetworkService
     private let settings: NUT19Settings
     
     public init(
-        cache: ResponseCache = InMemoryResponseCache(),
-        networkService: NetworkService,
+        cache: any ResponseCache = InMemoryResponseCache(),
+        networkService: any NetworkService,
         settings: NUT19Settings
     ) {
         self.cache = cache
@@ -351,10 +351,10 @@ public actor CachedNetworkService: Sendable {
 
 /// Manager for handling cached responses
 public actor CacheManager: Sendable {
-    private let cache: ResponseCache
+    private let cache: any ResponseCache
     private let settings: NUT19Settings
     
-    public init(cache: ResponseCache = InMemoryResponseCache(), settings: NUT19Settings) {
+    public init(cache: any ResponseCache = InMemoryResponseCache(), settings: NUT19Settings) {
         self.cache = cache
         self.settings = settings
     }
