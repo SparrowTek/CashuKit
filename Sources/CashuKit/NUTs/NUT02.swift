@@ -97,10 +97,27 @@ public struct KeysetID {
     /// 5. Prefix it with a keyset ID version byte
     public static func deriveKeysetID(from keys: [String: String]) -> String {
         // Sort keys by amount (ascending order)
+        // Note: Some amounts might be larger than Int64.max, so we need to handle them carefully
         let sortedKeys = keys.sorted { lhs, rhs in
-            let lhsAmount = Int(lhs.key) ?? 0
-            let rhsAmount = Int(rhs.key) ?? 0
-            return lhsAmount < rhsAmount
+            // Try parsing as Int first
+            if let lhsInt = Int(lhs.key), let rhsInt = Int(rhs.key) {
+                return lhsInt < rhsInt
+            }
+            
+            // If one parses and the other doesn't, the one that doesn't parse is larger
+            if Int(lhs.key) != nil && Int(rhs.key) == nil {
+                return true // lhs is smaller
+            }
+            if Int(lhs.key) == nil && Int(rhs.key) != nil {
+                return false // rhs is smaller
+            }
+            
+            // If neither parses as Int, compare as strings with equal length padding
+            // This handles numbers larger than Int64.max
+            let maxLength = max(lhs.key.count, rhs.key.count)
+            let paddedLhs = String(repeating: "0", count: maxLength - lhs.key.count) + lhs.key
+            let paddedRhs = String(repeating: "0", count: maxLength - rhs.key.count) + rhs.key
+            return paddedLhs < paddedRhs
         }
         
         // Concatenate all public keys
