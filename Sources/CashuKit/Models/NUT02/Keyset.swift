@@ -37,10 +37,17 @@ public struct Keyset: CashuCodabale {
         return keys.keys.compactMap { Int($0) }.sorted()
     }
     
-    /// Validate that all keys are valid hex strings
+    /// Validate that all keys are valid compressed public keys
     public func validateKeys() -> Bool {
         return keys.values.allSatisfy { key in
-            key.isValidHex && key.count == 66 // 33 bytes compressed key = 66 hex chars
+            // Check valid hex and correct length for compressed keys
+            guard key.isValidHex && key.count == 66 else { // 33 bytes compressed key = 66 hex chars
+                return false
+            }
+            
+            // Check that key starts with 02 or 03 (compressed format)
+            let prefix = String(key.prefix(2))
+            return prefix == "02" || prefix == "03"
         }
     }
 }
