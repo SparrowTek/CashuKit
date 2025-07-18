@@ -1,32 +1,84 @@
 # CashuKit
 
+> ⚠️ **WARNING: NOT PRODUCTION READY** ⚠️
+> 
+> This library is under active development and is NOT yet suitable for production use.
+> - Security features are still being implemented
+> - API may change significantly
+> - Some critical features are incomplete
+> - Not audited for security vulnerabilities
+> 
+> **DO NOT USE WITH REAL FUNDS**
+
 [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/Platforms-iOS%20%7C%20macOS%20%7C%20tvOS%20%7C%20watchOS%20%7C%20visionOS-blue.svg)](https://developer.apple.com)
 [![Swift Package Manager](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)](https://github.com/apple/swift-package-manager)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A Swift package implementing the Cashu ecash protocol for iOS and Apple platforms. CashuKit provides a simple, type-safe API for integrating Cashu wallet functionality into your applications.
+A Swift package implementing the Cashu ecash protocol for iOS and Apple platforms. CashuKit provides a type-safe API for integrating Cashu wallet functionality into your applications.
+
+## Current Status
+
+This library is approximately 60-70% complete. See [Production_Ready_Analysis.md](Production_Ready_Analysis.md) for a detailed assessment of what's implemented and what remains.
+
+### ✅ Implemented
+- **Core Protocol**: NUT-00 through NUT-06, NUT-07, NUT-08, NUT-09, NUT-10, NUT-11, NUT-12, NUT-13, NUT-14, NUT-15, NUT-16, NUT-17, NUT-19, NUT-20, NUT-22
+- **Wallet Operations**: Mint, melt, swap, send, receive
+- **Token Management**: V3/V4 token serialization, CBOR support
+- **Cryptography**: BDHKE, deterministic secrets, P2PK, HTLCs
+- **State Management**: Actor-based concurrency, thread safety
+- **Error Handling**: Comprehensive error types and recovery
+
+### 🚧 In Progress
+- **Security**: Keychain integration via Vault framework
+- **Authentication**: NUT-22 access token support
+- **Restoration**: Full wallet restoration from mnemonic
+
+### ❌ Not Implemented
+- **Advanced Features**: DLCs, subscription model
+- **Production Hardening**: Rate limiting, circuit breakers
+- **Testing**: Full test coverage, integration tests
 
 ## Features
 
-- ✅ **Complete NUT Implementation**: Supports NUT-00 through NUT-06
+- ✅ **NUT Implementation**: Supports NUT-00 through NUT-22 (with some gaps)
 - ✅ **Thread-Safe**: Built with Swift's actor model for concurrent operations
 - ✅ **Type-Safe**: Leverages Swift's type system for compile-time safety
 - ✅ **SwiftUI Ready**: Designed for easy integration with SwiftUI applications
-- ✅ **Comprehensive Testing**: Extensive test coverage for all core functionality
-- ✅ **Real-time Balance Updates**: Stream balance changes for reactive UIs
-- ✅ **Denomination Optimization**: Smart denomination management for efficiency
-- ✅ **Error Handling**: Structured error handling with detailed error information
+- ✅ **Deterministic Secrets**: BIP39/BIP32 support for wallet recovery
+- ✅ **Multiple Token Formats**: V3 JSON and V4 CBOR token formats
+- ✅ **Advanced Spending Conditions**: P2PK and HTLC support
 
 ## Supported Cashu NIPs (NUTs)
 
-- **NUT-00**: Blind Diffie-Hellman Key Exchange (BDHKE)
+### Core Protocol
+- **NUT-00**: Notation, Terminology and Types
 - **NUT-01**: Mint public key exchange
-- **NUT-02**: Keysets and fees
-- **NUT-03**: Swap tokens
+- **NUT-02**: Keysets and keyset IDs
+- **NUT-03**: Swap tokens (exchange proofs)
 - **NUT-04**: Mint tokens
 - **NUT-05**: Melting tokens
 - **NUT-06**: Mint information
+
+### Token Formats
+- **NUT-00**: V3 Token Format (JSON-based)
+- **NUT-00**: V4 Token Format (CBOR-based)
+
+### Advanced Features
+- **NUT-07**: Token state check
+- **NUT-08**: Lightning fee return
+- **NUT-09**: Wallet restore from seed
+- **NUT-10**: Spending conditions (P2PK)
+- **NUT-11**: Pay-to-Public-Key (P2PK)
+- **NUT-12**: Offline ecash signature validation (DLEQ)
+- **NUT-13**: Deterministic secrets (BIP39/BIP32)
+- **NUT-14**: Hash Time Locked Contracts (HTLCs)
+- **NUT-15**: Multi-path payments (MPP)
+- **NUT-16**: Animated QR codes
+- **NUT-17**: WebSocket subscriptions
+- **NUT-19**: Mint Management
+- **NUT-20**: Bitcoin On-Chain Support
+- **NUT-22**: Non-custodial wallet authentication
 
 ## Installation
 
@@ -36,13 +88,13 @@ Add CashuKit to your project using Swift Package Manager:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/your-repo/CashuKit", from: "1.0.0")
+    .package(url: "https://github.com/SparrowTek/CashuKit", from: "0.1.0")
 ]
 ```
 
 Or add it through Xcode:
 1. File → Add Package Dependencies
-2. Enter: `https://github.com/your-repo/CashuKit`
+2. Enter: `https://github.com/SparrowTek/CashuKit`
 3. Choose your version requirements
 
 ## Quick Start
@@ -50,239 +102,134 @@ Or add it through Xcode:
 ```swift
 import CashuKit
 
+// Create wallet configuration
+let config = WalletConfiguration(
+    mintURL: "https://testnut.cashu.space",
+    unit: "sat"
+)
+
 // Create a wallet
-let wallet = await CashuKit.createWallet(mintURL: "https://mint.example.com")
+let wallet = await CashuWallet(configuration: config)
 
 // Initialize the wallet
 try await wallet.initialize()
 
 // Check balance
-let balance = try await wallet.balance
+let balance = await wallet.getTotalBalance()
 print("Current balance: \(balance) sats")
 
 // Mint tokens from Lightning invoice
-let mintResult = try await wallet.mint(
-    amount: 1000, 
-    paymentRequest: "lnbc10u1p3..."
-)
+let mintQuote = try await wallet.requestMintQuote(amount: 1000)
+// Pay the Lightning invoice...
+let proofs = try await wallet.mint(quoteID: mintQuote.quote)
 
 // Send tokens
 let token = try await wallet.send(amount: 500, memo: "Payment for coffee")
-let serializedToken = try await wallet.exportToken(amount: 500)
 
 // Receive tokens
-let receivedProofs = try await wallet.importToken(serializedToken)
+let receivedProofs = try await wallet.receive(token: token)
 
-// Spend tokens via Lightning
-let meltResult = try await wallet.melt(paymentRequest: "lnbc5u1p3...")
+// Melt tokens via Lightning
+let meltQuote = try await wallet.requestMeltQuote(
+    paymentRequest: "lnbc5u1p3...",
+    amount: 500
+)
+let meltResult = try await wallet.melt(quote: meltQuote)
 ```
 
-## Usage
+## Advanced Features
 
-### Basic Wallet Setup
-
-```swift
-import CashuKit
-
-class WalletManager {
-    private var wallet: CashuWallet?
-    
-    func setupWallet() async throws {
-        // Create wallet with mint URL
-        wallet = await CashuKit.createWallet(
-            mintURL: "https://mint.example.com",
-            unit: "sat"
-        )
-        
-        // Initialize wallet (fetches mint info and keysets)
-        try await wallet?.initialize()
-    }
-    
-    func getBalance() async throws -> Int {
-        guard let wallet = wallet else { 
-            throw CashuError.walletNotInitialized 
-        }
-        
-        return try await wallet.balance
-    }
-}
-```
-
-### SwiftUI Integration
+### Deterministic Secrets (NUT-13)
 
 ```swift
-import SwiftUI
-import CashuKit
-
-struct WalletView: View {
-    @StateObject private var walletManager = WalletManager()
-    @State private var balance: Int = 0
-    
-    var body: some View {
-        VStack {
-            Text("Balance: \(balance) sats")
-                .font(.largeTitle)
-            
-            Button("Refresh") {
-                Task {
-                    balance = try await walletManager.getBalance()
-                }
-            }
-        }
-        .task {
-            try await walletManager.setupWallet()
-            balance = try await walletManager.getBalance()
-        }
-    }
-}
-```
-
-### Real-time Balance Updates
-
-```swift
-// Monitor balance changes in real-time
-for await update in wallet.getBalanceStream() {
-    if update.balanceChanged {
-        print("Balance: \(update.previousBalance) → \(update.newBalance)")
-        print("Change: \(update.balanceDifference) sats")
-    }
-    
-    if let error = update.error {
-        print("Balance update error: \(error)")
-    }
-}
-```
-
-### Advanced Configuration
-
-```swift
-let config = WalletConfiguration(
-    mintURL: "https://mint.example.com",
-    unit: "sat",
-    retryAttempts: 5,
-    retryDelay: 2.0,
-    operationTimeout: 60.0
+// Create wallet with mnemonic for backup/restore
+let mnemonic = try CashuWallet.generateMnemonic()
+let wallet = try await CashuWallet(
+    configuration: config,
+    mnemonic: mnemonic
 )
 
-let wallet = await CashuKit.createWallet(configuration: config)
-try await wallet.initialize()
+// Restore wallet from mnemonic
+let restoredWallet = try await CashuWallet(
+    configuration: config,
+    mnemonic: savedMnemonic
+)
 ```
 
-### Error Handling
+### Spending Conditions (NUT-10/11)
 
 ```swift
-do {
-    let balance = try await wallet.balance
-    print("Current balance: \(balance) sats")
-} catch CashuError.walletNotInitialized {
-    print("Please initialize the wallet first")
-} catch CashuError.insufficientBalance {
-    print("Not enough balance for this operation")
-} catch CashuError.networkError(let details) {
-    print("Network error: \(details)")
-} catch {
-    print("Unexpected error: \(error)")
-}
-```
-
-## Core Operations
-
-### Minting Tokens
-
-```swift
-// Mint tokens from Lightning invoice
-let mintResult = try await wallet.mint(
+// Create P2PK-locked token
+let publicKey = try P256K.KeyAgreement.PrivateKey().publicKey
+let p2pkToken = try await wallet.send(
     amount: 1000,
-    paymentRequest: "lnbc10u1p3pnyh8n..."
+    conditions: .p2pk(publicKey: publicKey)
 )
 
-print("Minted \(mintResult.proofs.count) proofs")
+// Receive P2PK token with signature
+let signature = try wallet.createP2PKSignature(
+    privateKey: privateKey,
+    proofs: p2pkToken.token[0].proofs
+)
+let proofs = try await wallet.receive(
+    token: p2pkToken,
+    p2pkSignatures: [signature]
+)
 ```
 
-### Sending Tokens
+### HTLC Support (NUT-14)
 
 ```swift
-// Create token for sending
-let token = try await wallet.send(amount: 500, memo: "Coffee payment")
-
-// Export as string for sharing
-let serializedToken = try await wallet.exportToken(
+// Create HTLC-locked token
+let htlcSecret = "mySecret"
+let htlcToken = try await wallet.send(
     amount: 500,
-    memo: "Coffee payment"
+    conditions: .htlc(
+        hashlock: SHA256.hash(data: htlcSecret.data(using: .utf8)!),
+        locktime: Date().timeIntervalSince1970 + 3600 // 1 hour
+    )
 )
 
-// Share serializedToken with recipient
-```
-
-### Receiving Tokens
-
-```swift
-// Receive token from string
-let proofs = try await wallet.importToken(serializedToken)
-print("Received \(proofs.count) proofs")
-
-// Or receive CashuToken directly
-let receivedProofs = try await wallet.receive(token: cashuToken)
-```
-
-### Spending Tokens
-
-```swift
-// Spend tokens via Lightning
-let meltResult = try await wallet.melt(
-    paymentRequest: "lnbc5u1p3pnyh8n..."
+// Claim HTLC token
+let htlcProofs = try await wallet.receive(
+    token: htlcToken,
+    htlcPreimages: [htlcSecret]
 )
+```
 
-if meltResult.settled {
-    print("Payment successful")
-} else {
-    print("Payment pending")
+### Token State Management (NUT-07)
+
+```swift
+// Check proof states
+let states = try await wallet.checkProofStates(proofs: myProofs)
+for state in states {
+    print("Proof \(state.Y): \(state.state)")
 }
-```
 
-## Denomination Management
-
-CashuKit includes intelligent denomination management for optimal proof efficiency:
-
-```swift
-// Get denomination breakdown
-let breakdown = try await wallet.getDenominationBreakdown()
-print("Denominations: \(breakdown.denominations)")
-
-// Optimize denominations
-let result = try await wallet.optimizeDenominations(
-    preferredDenominations: DenominationUtils.standardDenominations
+// Restore proofs from deterministic backup
+let restoredProofs = try await wallet.restore(
+    keysetIDs: ["009a1f293253e41e"],
+    startCounter: 0,
+    maxCounter: 1000
 )
-
-// Check if denominations are efficient
-let isEfficient = DenominationUtils.isEfficient(breakdown.denominations)
 ```
 
-## Balance Management
+## Security Considerations
 
-```swift
-// Get total balance
-let totalBalance = try await wallet.balance
+⚠️ **This library is NOT security audited and should NOT be used in production.**
 
-// Get balance for specific keyset
-let keysetBalance = try await wallet.balance(for: keysetID)
+Current security implementation:
+- Uses system-provided secure random generation
+- Implements constant-time cryptographic operations via P256K
+- Validates all external inputs
+- Uses actor model for thread safety
 
-// Get detailed balance breakdown
-let breakdown = try await wallet.getBalanceBreakdown()
-for (keysetID, balance) in breakdown.keysetBalances {
-    print("Keyset \(keysetID): \(balance.balance) sats")
-}
-```
-
-## Wallet Statistics
-
-```swift
-let stats = try await wallet.getStatistics()
-print("Total balance: \(stats.totalBalance) sats")
-print("Proof count: \(stats.proofCount)")
-print("Spent proofs: \(stats.spentProofCount)")
-print("Keysets: \(stats.keysetCount)")
-```
+Missing security features:
+- Secure key storage (Keychain integration in progress)
+- Rate limiting for mint requests
+- Circuit breakers for network failures
+- Comprehensive input validation
+- Security audit
 
 ## Platform Support
 
@@ -292,23 +239,13 @@ print("Keysets: \(stats.keysetCount)")
 - watchOS 10.0+
 - visionOS 2.0+
 
-## Architecture
+## Dependencies
 
-CashuKit is built with modern Swift practices:
-
-- **Actor-based Concurrency**: Thread-safe operations using Swift's actor model
-- **Async/Await**: Modern concurrency with async/await patterns
-- **Structured Error Handling**: Comprehensive error types and handling
-- **Type Safety**: Leverage Swift's type system for compile-time guarantees
-- **Protocol-oriented Design**: Extensible and testable architecture
-
-## Security
-
-- **Secure Random Generation**: Uses system-provided secure random number generation
-- **Memory Safety**: Proper cleanup of sensitive cryptographic material
-- **Input Validation**: Comprehensive validation of all external inputs
-- **TLS Enforcement**: All network communication uses TLS
-- **Constant-time Operations**: Cryptographic operations use constant-time implementations
+- [swift-secp256k1](https://github.com/21-DOT-DEV/swift-secp256k1) - Elliptic curve cryptography
+- [BigInt](https://github.com/attaswift/BigInt) - Large number arithmetic
+- [BitcoinDevKit](https://github.com/bitcoindevkit/bdk-swift) - Bitcoin functionality
+- [CryptoSwift](https://github.com/krzyzanowskim/CryptoSwift) - Additional cryptographic functions
+- [SwiftCBOR](https://github.com/valpackett/SwiftCBOR) - CBOR encoding/decoding
 
 ## Testing
 
@@ -320,50 +257,29 @@ swift test
 
 Or in Xcode:
 - ⌘+U to run all tests
-- Navigate to Test Navigator for individual test runs
-
-## Examples
-
-Check out the `Examples/` directory for comprehensive usage examples:
-
-- **BasicIntegration.swift**: Complete integration example with SwiftUI
-- **CommandLineWallet.swift**: Command-line wallet implementation
-- **Advanced Examples**: Complex scenarios and edge cases
-
-## Documentation
-
-- **API Documentation**: Complete API reference in `Documentation/API.md`
-- **Integration Guide**: Step-by-step integration guide
-- **Migration Guide**: Upgrading between versions
-- **Troubleshooting**: Common issues and solutions
 
 ## Contributing
 
-We welcome contributions! Please see our contributing guidelines:
+We welcome contributions! However, please note that this library is not yet production ready. Areas that need work:
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
+1. Security hardening and audit
+2. Complete test coverage
+3. Performance optimization
+4. Documentation improvements
+5. Missing NUT implementations
+
+Please open an issue to discuss major changes before submitting a PR.
 
 ## License
 
 CashuKit is released under the MIT License. See [LICENSE](LICENSE) for details.
 
-## Support
-
-- **GitHub Issues**: Report bugs or request features
-- **Documentation**: Check the `Documentation/` directory
-- **Examples**: See `Examples/` for usage patterns
-
 ## Acknowledgments
 
 - [Cashu Protocol](https://docs.cashu.space) - The underlying ecash protocol
-- [Swift Secp256k1](https://github.com/21-DOT-DEV/swift-secp256k1) - Cryptographic operations
-- The Swift community for excellent tooling and libraries
+- [cashubtc/nuts](https://github.com/cashubtc/nuts) - Protocol specifications
+- [cashubtc/cdk](https://github.com/cashubtc/cdk) - Reference implementation
 
 ---
 
-**Note**: This is a Swift implementation of the Cashu ecash protocol. For the complete protocol specification, visit [docs.cashu.space](https://docs.cashu.space).
+**Remember**: This is experimental software. Use at your own risk and only with testnet funds.
