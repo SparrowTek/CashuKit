@@ -37,6 +37,13 @@ extension Data {
     }
 }
 
+extension Array where Element == UInt8 {
+    /// Convert byte array to hex string
+    public var hexString: String {
+        return map { String(format: "%02x", $0) }.joined()
+    }
+}
+
 // MARK: - String Extensions
 
 extension String {

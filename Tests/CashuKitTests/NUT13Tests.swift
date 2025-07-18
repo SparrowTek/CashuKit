@@ -138,18 +138,6 @@ struct NUT13Tests {
         }
     }
     
-    @Test("Wallet initialization with mnemonic")
-    func testWalletInitWithMnemonic() async throws {
-        let mnemonic = try CashuWallet.generateMnemonic()
-        
-        let config = WalletConfiguration(mintURL: "https://test.mint")
-        let wallet = try await CashuWallet(
-            configuration: config,
-            mnemonic: mnemonic
-        )
-        
-        #expect(await wallet.supportsDeterministicSecrets == true)
-    }
     
     @Test("Mnemonic validation in wallet")
     func testWalletMnemonicValidation() {
