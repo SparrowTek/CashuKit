@@ -211,30 +211,42 @@ public actor CashuWallet {
     /// Initialize the wallet (fetch mint info and keysets)
     public func initialize() async throws {
         guard case .uninitialized = walletState else {
+            logger.warning("Attempted to initialize already initialized wallet", category: .wallet)
             throw CashuError.walletAlreadyInitialized
         }
         
+        logger.info("Initializing wallet for mint: \(configuration.mintURL)", category: .wallet)
         walletState = .initializing
         
         do {
             // Fetch mint information
-            currentMintInfo = try await mintInfoService.getMintInfoWithRetry(
-                from: configuration.mintURL,
-                maxRetries: configuration.retryAttempts,
-                retryDelay: configuration.retryDelay
-            )
+            logger.debug("Fetching mint information", category: .wallet)
+            currentMintInfo = try await logger.logPerformance(operation: "Fetch mint info", category: .performance) {
+                try await mintInfoService.getMintInfoWithRetry(
+                    from: configuration.mintURL,
+                    maxRetries: configuration.retryAttempts,
+                    retryDelay: configuration.retryDelay
+                )
+            }
             
             // Validate mint supports basic operations
             guard let mintInfo = currentMintInfo, mintInfo.supportsBasicOperations() else {
+                logger.error("Mint does not support basic operations", category: .wallet)
                 throw CashuError.invalidMintConfiguration
             }
             
+            logger.info("Mint info fetched successfully: \(mintInfo.name ?? "Unknown")", category: .wallet)
+            
             // Fetch active keysets
+            logger.debug("Syncing keysets", category: .wallet)
             try await syncKeysets()
             
             walletState = .ready
+            logger.info("Wallet initialized successfully", category: .wallet)
         } catch {
             walletState = .error(error as? CashuError ?? CashuError.invalidMintConfiguration)
+            logger.error("Wallet initialization failed: \(error)", category: .wallet)
+            ErrorAnalytics.logError(error, context: ["operation": "wallet_initialization", "mint": configuration.mintURL])
             throw error
         }
     }

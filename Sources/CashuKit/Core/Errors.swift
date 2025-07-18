@@ -94,6 +94,30 @@ public enum CashuError: Error, Sendable {
     case invalidProofType
     case invalidWitness
     case noActiveKeyset
+    
+    // Additional errors for user-friendly error system
+    case connectionFailed
+    case invalidToken
+    case tokenAlreadySpent
+    case invalidProof
+    case tokenNotFound
+    case quotePending
+    case quoteExpired
+    case quoteNotFound
+    case keysetInactive
+    case invalidUnit
+    case invalidDenomination
+    case invalidState(String)
+    case serializationError(String)
+    case jsonEncodingError
+    case jsonDecodingError
+    case hexDecodingError
+    case base64DecodingError
+    case unhandledError(OSStatus)
+    case unknownError
+    case notImplemented
+    case invalidDerivationPath
+    case temporaryFailure
 }
 
 // MARK: - HTTP Error Response (NUT-00 Specification)
@@ -147,16 +171,31 @@ extension CashuError {
              .syncRequired, .operationTimeout, .operationCancelled, .invalidMintConfiguration,
              .keysetNotFound, .keysetExpired, .unsupportedOperation, .concurrencyError,
              .unsupportedVersion, .invalidMnemonic, .invalidSecret,
-             .invalidSignature, .mismatchedArrayLengths, .invalidPreimage,
-             .locktimeNotExpired, .invalidProofType, .invalidWitness, .noActiveKeyset:
+             .mismatchedArrayLengths, .invalidPreimage,
+             .locktimeNotExpired, .invalidProofType, .invalidWitness, .noActiveKeyset,
+             .quotePending, .quoteExpired, .quoteNotFound, .keysetInactive,
+             .invalidUnit, .invalidDenomination, .invalidDerivationPath,
+             .notImplemented:
             return .`protocol`
+            
+        case .connectionFailed, .temporaryFailure:
+            return .network
+            
+        case .invalidToken, .tokenAlreadySpent, .invalidProof, .tokenNotFound,
+             .invalidState, .serializationError, .jsonEncodingError, .jsonDecodingError,
+             .hexDecodingError, .base64DecodingError:
+            return .validation
+            
+        case .unhandledError, .unknownError:
+            return .wallet
         }
     }
     
     /// Whether this error is retryable
     public var isRetryable: Bool {
         switch self {
-        case .networkError, .mintUnavailable, .rateLimitExceeded, .operationTimeout:
+        case .networkError, .mintUnavailable, .rateLimitExceeded, .operationTimeout,
+             .connectionFailed, .temporaryFailure, .quotePending:
             return true
         case .httpError(_, let code):
             return code >= 500 || code == 429
@@ -171,6 +210,8 @@ extension CashuError {
         return "CASHU_\(String(describing: mirror.children.first?.label ?? "UNKNOWN").uppercased())"
     }
 }
+
+// MARK: - LocalizedError Conformance
 
 extension CashuError: LocalizedError {
     public var errorDescription: String? {
@@ -308,9 +349,59 @@ extension CashuError: LocalizedError {
             return "No active keyset found for mint"
         case .noKeychainData:
             return "No wallet data found in keychain"
+            
+        // Additional errors
+        case .connectionFailed:
+            return "Connection failed"
+        case .invalidToken:
+            return "Invalid token"
+        case .tokenAlreadySpent:
+            return "Token already spent"
+        case .invalidProof:
+            return "Invalid proof"
+        case .tokenNotFound:
+            return "Token not found"
+        case .quotePending:
+            return "Quote is pending"
+        case .quoteExpired:
+            return "Quote has expired"
+        case .quoteNotFound:
+            return "Quote not found"
+        case .keysetInactive:
+            return "Keyset is inactive"
+        case .invalidUnit:
+            return "Invalid unit"
+        case .invalidDenomination:
+            return "Invalid denomination"
+        case .invalidState(let state):
+            return "Invalid state: \(state)"
+        case .serializationError(let details):
+            return "Serialization error: \(details)"
+        case .jsonEncodingError:
+            return "JSON encoding error"
+        case .jsonDecodingError:
+            return "JSON decoding error"
+        case .hexDecodingError:
+            return "Hex decoding error"
+        case .base64DecodingError:
+            return "Base64 decoding error"
+        case .unhandledError(let status):
+            return "Unhandled error with status: \(status)"
+        case .unknownError:
+            return "Unknown error occurred"
+        case .notImplemented:
+            return "Feature not implemented"
+        case .invalidDerivationPath:
+            return "Invalid derivation path"
+        case .temporaryFailure:
+            return "Temporary failure, please retry"
         }
     }
-    
+}
+
+// MARK: - Error Customization
+
+extension CashuError {
     public var recoverySuggestion: String? {
         switch self {
         // Cryptographic errors
