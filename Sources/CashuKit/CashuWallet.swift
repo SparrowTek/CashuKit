@@ -7,6 +7,7 @@
 
 import Foundation
 import P256K
+import BitcoinDevKit
 
 // MARK: - Wallet Configuration
 
@@ -783,14 +784,36 @@ public actor CashuWallet {
     /// - Parameter strength: Strength in bits (128, 160, 192, 224, or 256)
     /// - Returns: BIP39 mnemonic phrase
     public static func generateMnemonic(strength: Int = 128) throws -> String {
-        return try BIP39.generateMnemonic(strength: strength)
+        let wordCount: WordCount
+        switch strength {
+        case 128:
+            wordCount = .words12
+        case 160:
+            wordCount = .words15
+        case 192:
+            wordCount = .words18
+        case 224:
+            wordCount = .words21
+        case 256:
+            wordCount = .words24
+        default:
+            throw CashuError.invalidMnemonic
+        }
+        
+        let mnemonic = Mnemonic(wordCount: wordCount)
+        return mnemonic.description
     }
     
     /// Validate a mnemonic phrase
     /// - Parameter mnemonic: The mnemonic phrase to validate
     /// - Returns: True if valid
     public static func validateMnemonic(_ mnemonic: String) -> Bool {
-        return BIP39.validateMnemonic(mnemonic)
+        do {
+            _ = try Mnemonic.fromString(mnemonic: mnemonic)
+            return true
+        } catch {
+            return false
+        }
     }
     
     /// Restore wallet from seed phrase (NUT-13)

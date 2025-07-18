@@ -9,6 +9,7 @@ import Testing
 @testable import CashuKit
 import Foundation
 import P256K
+import BitcoinDevKit
 
 @Suite("NUT-13 Tests")
 struct NUT13Tests {
@@ -16,16 +17,16 @@ struct NUT13Tests {
     @Test("BIP39 mnemonic generation")
     func testMnemonicGeneration() throws {
         // Test 128-bit strength (12 words)
-        let mnemonic12 = try BIP39.generateMnemonic(strength: 128)
+        let mnemonic12 = try CashuWallet.generateMnemonic(strength: 128)
         #expect(mnemonic12.split(separator: " ").count == 12)
         
         // Test 256-bit strength (24 words)
-        let mnemonic24 = try BIP39.generateMnemonic(strength: 256)
+        let mnemonic24 = try CashuWallet.generateMnemonic(strength: 256)
         #expect(mnemonic24.split(separator: " ").count == 24)
         
         // Test invalid strength throws error
-        #expect(throws: BIP39.BIP39Error.self) {
-            _ = try BIP39.generateMnemonic(strength: 123)
+        #expect(throws: CashuError.self) {
+            _ = try CashuWallet.generateMnemonic(strength: 123)
         }
     }
     
@@ -33,15 +34,15 @@ struct NUT13Tests {
     func testMnemonicValidation() {
         // Valid 12-word mnemonic with correct checksum
         let validMnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
-        #expect(BIP39.validateMnemonic(validMnemonic) == true)
+        #expect(CashuWallet.validateMnemonic(validMnemonic) == true)
         
         // Invalid word count
         let invalidCount = "abandon ability able"
-        #expect(BIP39.validateMnemonic(invalidCount) == false)
+        #expect(CashuWallet.validateMnemonic(invalidCount) == false)
         
         // Invalid word
         let invalidWord = "abandon ability able about above absent absorb abstract absurd abuse access invalid"
-        #expect(BIP39.validateMnemonic(invalidWord) == false)
+        #expect(CashuWallet.validateMnemonic(invalidWord) == false)
     }
     
     @Test("Keyset ID to integer conversion")

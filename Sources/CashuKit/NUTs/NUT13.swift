@@ -8,6 +8,7 @@
 import Foundation
 import P256K
 import CryptoKit
+import BitcoinDevKit
 import CommonCrypto
 
 // MARK: - NUT-13 Constants
@@ -28,8 +29,13 @@ public struct DeterministicSecretDerivation: Sendable {
     }
     
     public init(mnemonic: String, passphrase: String = "") throws {
-        let seed = try BIP39.mnemonicToSeed(mnemonic: mnemonic, passphrase: passphrase)
-        self.masterKey = BIP32.createMasterKey(seed: seed)
+        // Validate mnemonic
+        _ = try Mnemonic.fromString(mnemonic: mnemonic)
+        
+        // BDK doesn't expose seed generation directly, so we'll compute it ourselves
+        // This follows BIP39 standard: PBKDF2 with HMAC-SHA512
+        let seed = createSeedFromMnemonic(mnemonic: mnemonic, passphrase: passphrase)
+        self.masterKey = createMasterKeyFromSeed(seed: seed)
     }
     
     public func deriveSecret(keysetID: String, counter: UInt32) throws -> String {
@@ -83,10 +89,20 @@ public struct DeterministicSecretDerivation: Sendable {
     }
     
     private func derivePrivateKey(path: [UInt32]) throws -> Data {
-        var key = masterKey
-        
+        // Convert path to BDK format
+        var pathString = "m"
         for index in path {
-            key = try BIP32.deriveChildKey(parentKey: key, index: index)
+            if index & 0x80000000 != 0 {
+                pathString += "/\(index & 0x7FFFFFFF)'"
+            } else {
+                pathString += "/\(index)"
+            }
+        }
+        
+        // Use custom BIP32 derivation for now since BDK doesn't expose raw key derivation
+        var key = masterKey
+        for index in path {
+            key = try deriveChildKeyCustom(parentKey: key, index: index)
         }
         
         return Data(key.prefix(32))
@@ -239,42 +255,66 @@ public struct WalletRestoration: Sendable {
 }
 
 
-// MARK: - BIP32 Support
+// MARK: - BIP32 Helpers
 
-public struct BIP32 {
-    private static let curveOrder = Data(hexString: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141")!
+// Since BDK doesn't expose raw key derivation, we need these helper functions
+
+// Create seed from mnemonic following BIP39 standard
+private func createSeedFromMnemonic(mnemonic: String, passphrase: String) -> Data {
+    let mnemonic = mnemonic.data(using: .utf8)!
+    let salt = "mnemonic\(passphrase)".data(using: .utf8)!
     
-    public static func createMasterKey(seed: Data) -> Data {
-        let hmac = HMAC.sha512(key: "Bitcoin seed".data(using: .utf8)!, data: seed)
-        return hmac
-    }
-    
-    public static func deriveChildKey(parentKey: Data, index: UInt32) throws -> Data {
-        let chainCode = parentKey.suffix(32)
-        let privateKey = parentKey.prefix(32)
-        
-        var data = Data()
-        if index & 0x80000000 != 0 {
-            data.append(0x00)
-            data.append(privateKey)
-        } else {
-            let privateKeyObject = try P256K.KeyAgreement.PrivateKey(dataRepresentation: privateKey)
-            data.append(privateKeyObject.publicKey.dataRepresentation)
+    // BIP39 specifies PBKDF2 with HMAC-SHA512, 2048 iterations
+    var seed = Data(count: 64)
+    seed.withUnsafeMutableBytes { seedBytes in
+        salt.withUnsafeBytes { saltBytes in
+            mnemonic.withUnsafeBytes { mnemonicBytes in
+                CCKeyDerivationPBKDF(
+                    CCPBKDFAlgorithm(kCCPBKDF2),
+                    mnemonicBytes.bindMemory(to: Int8.self).baseAddress!, mnemonic.count,
+                    saltBytes.bindMemory(to: UInt8.self).baseAddress!, salt.count,
+                    CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA512),
+                    2048,
+                    seedBytes.bindMemory(to: UInt8.self).baseAddress!, 64
+                )
+            }
         }
-        
-        let indexBytes = index.bigEndianBytes
-        data.append(contentsOf: indexBytes)
-        
-        let hmac = HMAC.sha512(key: chainCode, data: data)
-        let childPrivateKey = hmac.prefix(32)
-        let childChainCode = hmac.suffix(32)
-        
-        var result = Data()
-        result.append(childPrivateKey)
-        result.append(childChainCode)
-        
-        return result
     }
+    return seed
+}
+
+private func createMasterKeyFromSeed(seed: Data) -> Data {
+    let hmac = HMAC.sha512(key: "Bitcoin seed".data(using: .utf8)!, data: seed)
+    return hmac
+}
+
+private func deriveChildKeyCustom(parentKey: Data, index: UInt32) throws -> Data {
+    let chainCode = parentKey.suffix(32)
+    let privateKey = parentKey.prefix(32)
+    
+    var data = Data()
+    if index & 0x80000000 != 0 {
+        // Hardened derivation
+        data.append(0x00)
+        data.append(privateKey)
+    } else {
+        // Non-hardened derivation
+        let privateKeyObject = try P256K.KeyAgreement.PrivateKey(dataRepresentation: privateKey)
+        data.append(privateKeyObject.publicKey.dataRepresentation)
+    }
+    
+    let indexBytes = index.bigEndianBytes
+    data.append(contentsOf: indexBytes)
+    
+    let hmac = HMAC.sha512(key: chainCode, data: data)
+    let childPrivateKey = hmac.prefix(32)
+    let childChainCode = hmac.suffix(32)
+    
+    var result = Data()
+    result.append(childPrivateKey)
+    result.append(childChainCode)
+    
+    return result
 }
 
 // MARK: - Extensions
