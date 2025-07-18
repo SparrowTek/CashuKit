@@ -8,6 +8,7 @@
 
 import Foundation
 import CryptoKit
+import P256K
 
 // MARK: - NUT-22: Token Metadata for Non-Custodial Wallet Authentication
 
@@ -118,10 +119,12 @@ public struct NUT22Settings: CashuCodabale, Sendable {
 /// Service for managing NUT-22 access tokens
 public actor AccessTokenService: Sendable {
     private let networkService: any NetworkService
+    private let keyExchangeService: KeyExchangeService
     private var accessTokens: [String: [Proof]] = [:] // mintURL -> access tokens
     
-    public init(networkService: any NetworkService) {
+    public init(networkService: any NetworkService, keyExchangeService: KeyExchangeService) {
         self.networkService = networkService
+        self.keyExchangeService = keyExchangeService
     }
     
     /// Request access tokens from the mint
@@ -132,6 +135,12 @@ public actor AccessTokenService: Sendable {
         keysetId: String,
         blindingFactors: [Data]? = nil
     ) async throws -> [Proof] {
+        // Get keyset to obtain public keys
+        let keyResponse = try await keyExchangeService.getKeys(from: mintURL)
+        guard let keyset = keyResponse.keysets.first(where: { $0.id == keysetId }) else {
+            throw CashuError.keysetNotFound
+        }
+        
         // Generate secrets and blinding factors
         let secrets = try (0..<amount).map { _ in
             try generateRandomSecret()
@@ -158,10 +167,18 @@ public actor AccessTokenService: Sendable {
         // Unblind signatures and create access token proofs
         let proofs = try zip(zip(response.signatures, secrets), factors).map { (sigSecret, factor) in
             let (signature, secret) = sigSecret
+            
+            // Get the public key for this amount
+            guard let publicKeyHex = keyset.keys[String(signature.amount)],
+                  let publicKeyData = Data(hexString: publicKeyHex),
+                  let publicKey = try? P256K.KeyAgreement.PublicKey(dataRepresentation: publicKeyData, format: .compressed) else {
+                throw CashuError.keyGenerationFailed
+            }
+            
             let C = try unblindSignature(
                 blindSignature: signature.C_,
                 blindingFactor: factor,
-                publicKey: nil // Would need actual public key from keyset
+                publicKey: publicKey
             )
             
             return Proof(
@@ -280,17 +297,36 @@ private func generateRandomBytes(count: Int) throws -> Data {
     return Data(bytes)
 }
 
-/// Blind a message (simplified - would need actual implementation)
+/// Blind a message using the same implementation as NUT-13
 private func blindMessage(secret: Data, blindingFactor: Data) throws -> Data {
-    // This is a placeholder - actual implementation would use secp256k1 operations
-    // to compute B_ = Y + rG where Y = hash_to_curve(secret)
-    throw CashuError.nutNotImplemented("22 - blinding not fully implemented")
+    // Y = hash_to_curve(secret)
+    let Y = try hashToCurve(secret)
+    
+    // r*G
+    let rG = try P256K.KeyAgreement.PrivateKey(dataRepresentation: blindingFactor).publicKey
+    
+    // B_ = Y + r*G
+    let B_ = try addPoints(Y, rG)
+    
+    return B_.dataRepresentation
 }
 
-/// Unblind a signature (simplified - would need actual implementation)
-private func unblindSignature(blindSignature: String, blindingFactor: Data, publicKey: Data?) throws -> Data {
-    // This is a placeholder - actual implementation would use secp256k1 operations
-    // to compute C = C_ - rK where K is the public key
-    throw CashuError.nutNotImplemented("22 - unblinding not fully implemented")
+/// Unblind a signature using the same implementation as NUT-13
+private func unblindSignature(blindSignature: String, blindingFactor: Data, publicKey: P256K.KeyAgreement.PublicKey) throws -> Data {
+    guard let blindedSigData = Data(hexString: blindSignature) else {
+        throw CashuError.invalidSignature("Invalid hex in blinded signature")
+    }
+    
+    // Parse C_ as a public key
+    let C_ = try P256K.KeyAgreement.PublicKey(dataRepresentation: blindedSigData)
+    
+    // r*K
+    let rPrivKey = try P256K.KeyAgreement.PrivateKey(dataRepresentation: blindingFactor)
+    let rK = try multiplyPoint(publicKey, by: rPrivKey)
+    
+    // C = C_ - r*K
+    let C = try subtractPoints(C_, rK)
+    
+    return C.dataRepresentation
 }
 

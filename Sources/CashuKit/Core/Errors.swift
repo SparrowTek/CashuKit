@@ -80,6 +80,7 @@ public enum CashuError: Error, Sendable {
     case concurrencyError(String)
     case unsupportedVersion
     case missingBlindingFactor
+    case noKeychainData
     
     // NUT-13 specific errors
     case invalidMnemonic
@@ -135,7 +136,8 @@ extension CashuError {
             
         case .walletNotInitialized, .walletAlreadyInitialized, .walletNotInitializedWithMnemonic,
              .invalidProofSet, .proofAlreadySpent, .proofNotFound, .balanceInsufficient, 
-             .noSpendableProofs, .invalidWalletState, .tokenExpired, .tokenAlreadyUsed:
+             .noSpendableProofs, .invalidWalletState, .tokenExpired, .tokenAlreadyUsed,
+             .noKeychainData:
             return .wallet
             
         case .storageError:
@@ -304,6 +306,8 @@ extension CashuError: LocalizedError {
             return "Invalid witness data for HTLC proof"
         case .noActiveKeyset:
             return "No active keyset found for mint"
+        case .noKeychainData:
+            return "No wallet data found in keychain"
         }
     }
     
@@ -362,6 +366,8 @@ extension CashuError: LocalizedError {
             return "Consolidate your proofs or add more funds to your wallet"
         case .unsupportedVersion:
             return "Update your wallet software to support this version"
+        case .noKeychainData:
+            return "Initialize a new wallet or restore from a mnemonic phrase"
             
         default:
             return nil

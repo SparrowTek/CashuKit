@@ -81,6 +81,7 @@ public actor CashuWallet {
     private var keyExchangeService: KeyExchangeService?
     private var keysetManagementService: KeysetManagementService?
     private var checkStateService: CheckStateService?
+    private var accessTokenService: AccessTokenService?
     
     private var currentMintInfo: MintInfo?
     private var currentKeysets: [String: Keyset] = [:]
@@ -91,21 +92,36 @@ public actor CashuWallet {
     private var deterministicDerivation: DeterministicSecretDerivation?
     private let keysetCounterManager: KeysetCounterManager
     
+    // Security: Keychain storage
+    private let keychainManager: KeychainManager?
+    
     // MARK: - Initialization
     
     /// Initialize a new Cashu wallet
     /// - Parameters:
     ///   - configuration: Wallet configuration
     ///   - proofStorage: Optional custom proof storage (defaults to in-memory)
+    ///   - counterStorage: Optional custom counter storage
+    ///   - useKeychain: Whether to use keychain for secure storage (defaults to true)
+    ///   - keychainAccessGroup: Optional keychain access group for sharing
     public init(
         configuration: WalletConfiguration,
         proofStorage: (any ProofStorage)? = nil,
-        counterStorage: (any KeysetCounterStorage)? = nil
+        counterStorage: (any KeysetCounterStorage)? = nil,
+        useKeychain: Bool = true,
+        keychainAccessGroup: String? = nil
     ) async {
         self.configuration = configuration
         self.proofManager = ProofManager(storage: proofStorage ?? InMemoryProofStorage())
         self.mintInfoService = await MintInfoService()
         self.keysetCounterManager = KeysetCounterManager()
+        
+        // Initialize keychain manager if requested
+        if useKeychain {
+            self.keychainManager = KeychainManager(accessGroup: keychainAccessGroup)
+        } else {
+            self.keychainManager = nil
+        }
         
         // Initialize services
         await setupServices()
@@ -131,17 +147,32 @@ public actor CashuWallet {
     ///   - mnemonic: BIP39 mnemonic phrase
     ///   - passphrase: Optional BIP39 passphrase
     ///   - proofStorage: Optional custom proof storage
+    ///   - counterStorage: Optional custom counter storage
+    ///   - useKeychain: Whether to use keychain for secure storage (defaults to true)
+    ///   - keychainAccessGroup: Optional keychain access group for sharing
     public init(
         configuration: WalletConfiguration,
         mnemonic: String,
         passphrase: String = "",
         proofStorage: (any ProofStorage)? = nil,
-        counterStorage: (any KeysetCounterStorage)? = nil
+        counterStorage: (any KeysetCounterStorage)? = nil,
+        useKeychain: Bool = true,
+        keychainAccessGroup: String? = nil
     ) async throws {
         self.configuration = configuration
         self.proofManager = ProofManager(storage: proofStorage ?? InMemoryProofStorage())
         self.mintInfoService = await MintInfoService()
         self.keysetCounterManager = KeysetCounterManager()
+        
+        // Initialize keychain manager if requested
+        if useKeychain {
+            self.keychainManager = KeychainManager(accessGroup: keychainAccessGroup)
+            
+            // Store mnemonic securely
+            try await self.keychainManager?.storeMnemonic(mnemonic)
+        } else {
+            self.keychainManager = nil
+        }
         
         // Initialize deterministic derivation
         self.deterministicDerivation = try DeterministicSecretDerivation(
@@ -780,6 +811,94 @@ public actor CashuWallet {
         return deterministicDerivation != nil
     }
     
+    // MARK: - Access Token Management (NUT-22)
+    
+    /// Request access tokens from the mint after a successful mint operation
+    /// - Parameters:
+    ///   - quoteId: The quote ID from a successful mint operation
+    ///   - amount: Number of access tokens to request
+    /// - Returns: Array of access token proofs
+    @discardableResult
+    public func requestAccessTokens(quoteId: String, amount: Int) async throws -> [Proof] {
+        guard isReady else {
+            throw CashuError.walletNotInitialized
+        }
+        
+        guard let accessTokenService = accessTokenService else {
+            throw CashuError.nutNotImplemented("22")
+        }
+        
+        // Check if mint requires access tokens
+        guard let mintInfo = currentMintInfo,
+              mintInfo.supportsNUT22,
+              let nut22Settings = mintInfo.getNUT22Settings(),
+              (nut22Settings.mandatory || nut22Settings.requiresAccessToken(for: "/v1/swap")) else {
+            // Mint doesn't require access tokens
+            return []
+        }
+        
+        // Get active keyset for access tokens
+        guard let activeKeyset = currentKeysetInfos.values.first(where: { $0.active }) else {
+            throw CashuError.noActiveKeyset
+        }
+        
+        let tokens = try await accessTokenService.requestAccessTokens(
+            mintURL: configuration.mintURL,
+            quoteId: quoteId,
+            amount: amount,
+            keysetId: activeKeyset.id
+        )
+        
+        // Store access tokens securely if using keychain
+        if let keychainManager = keychainManager {
+            for (index, token) in tokens.enumerated() {
+                let tokenData = try JSONEncoder().encode(token)
+                let tokenString = String(data: tokenData, encoding: .utf8) ?? ""
+                try await keychainManager.storeAccessToken(tokenString, mintURL: "\(configuration.mintURL)_access_\(index)")
+            }
+        }
+        
+        return tokens
+    }
+    
+    /// Check if the mint requires access tokens
+    public var requiresAccessTokens: Bool {
+        guard let mintInfo = currentMintInfo,
+              mintInfo.supportsNUT22,
+              let nut22Settings = mintInfo.getNUT22Settings() else {
+            return false
+        }
+        
+        return nut22Settings.mandatory || nut22Settings.requiresAccessToken(for: "/v1/swap")
+    }
+    
+    /// Get an available access token for operations
+    public func getAccessToken() async -> AccessToken? {
+        guard let accessTokenService = accessTokenService else {
+            return nil
+        }
+        
+        // First try to get from the service's memory
+        if let proof = await accessTokenService.getAccessToken(for: configuration.mintURL) {
+            return AccessToken(access: proof.secret)
+        }
+        
+        // Try to load from keychain if available
+        if let keychainManager = keychainManager {
+            // Check for stored access tokens
+            for index in 0..<10 {  // Check up to 10 stored tokens
+                if let tokenString = try? await keychainManager.retrieveAccessToken(mintURL: "\(configuration.mintURL)_access_\(index)"),
+                   let tokenData = tokenString.data(using: .utf8),
+                   let proof = try? JSONDecoder().decode(Proof.self, from: tokenData) {
+                    // Return the first available token
+                    return AccessToken(access: proof.secret)
+                }
+            }
+        }
+        
+        return nil
+    }
+    
     /// Generate a new mnemonic phrase
     /// - Parameter strength: Strength in bits (128, 160, 192, 224, or 256)
     /// - Returns: BIP39 mnemonic phrase
@@ -814,6 +933,39 @@ public actor CashuWallet {
         } catch {
             return false
         }
+    }
+    
+    /// Initialize wallet from keychain (restore existing wallet)
+    /// - Parameters:
+    ///   - configuration: Wallet configuration
+    ///   - passphrase: Optional BIP39 passphrase
+    ///   - proofStorage: Optional custom proof storage
+    ///   - counterStorage: Optional custom counter storage
+    ///   - keychainAccessGroup: Optional keychain access group for sharing
+    /// - Returns: A new wallet instance
+    /// - Throws: If no mnemonic is stored in keychain
+    public static func restoreFromKeychain(
+        configuration: WalletConfiguration,
+        passphrase: String = "",
+        proofStorage: (any ProofStorage)? = nil,
+        counterStorage: (any KeysetCounterStorage)? = nil,
+        keychainAccessGroup: String? = nil
+    ) async throws -> CashuWallet {
+        let keychainManager = KeychainManager(accessGroup: keychainAccessGroup)
+        
+        guard let mnemonic = try await keychainManager.retrieveMnemonic() else {
+            throw CashuError.noKeychainData
+        }
+        
+        return try await CashuWallet(
+            configuration: configuration,
+            mnemonic: mnemonic,
+            passphrase: passphrase,
+            proofStorage: proofStorage,
+            counterStorage: counterStorage,
+            useKeychain: true,
+            keychainAccessGroup: keychainAccessGroup
+        )
     }
     
     /// Restore wallet from seed phrase (NUT-13)
@@ -1043,6 +1195,16 @@ public actor CashuWallet {
         keyExchangeService = await KeyExchangeService()
         keysetManagementService = await KeysetManagementService()
         checkStateService = await CheckStateService()
+        
+        // Initialize NUT-22 access token service if we have the required services
+        if let keyExchangeService = keyExchangeService {
+            // Create a simple network service adapter
+            let networkService = SimpleNetworkService(baseURL: configuration.mintURL)
+            accessTokenService = AccessTokenService(
+                networkService: networkService,
+                keyExchangeService: keyExchangeService
+            )
+        }
     }
     
     /// Sync keysets with mint
@@ -1160,6 +1322,44 @@ public struct WalletStatistics: Sendable {
         self.spentProofCount = spentProofCount
         self.keysetCount = keysetCount
         self.mintURL = mintURL
+    }
+}
+
+// MARK: - Simple Network Service
+
+/// Simple network service implementation for CashuWallet
+private struct SimpleNetworkService: NetworkService {
+    let baseURL: String
+    
+    init(baseURL: String) {
+        self.baseURL = baseURL
+    }
+    
+    func execute<T: CashuCodabale>(method: String, path: String, payload: Data?) async throws -> T {
+        guard let url = URL(string: baseURL)?.appendingPathComponent(path) else {
+            throw CashuError.invalidMintURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = payload
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw CashuError.invalidResponse
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorResponse = try? JSONDecoder().decode(CashuHTTPError.self, from: data) {
+                throw CashuError.httpError(detail: errorResponse.detail, code: errorResponse.code)
+            }
+            throw CashuError.networkError("HTTP \(httpResponse.statusCode)")
+        }
+        
+        return try JSONDecoder.cashuDecoder.decode(T.self, from: data)
     }
 }
 

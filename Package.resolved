@@ -1,5 +1,5 @@
 {
-  "originHash" : "8da02ea60b032931d70836ced51ecd58520492c2458850e1247587dc7a39db5e",
+  "originHash" : "be350b35fe308dec63c9a1d3898029b4537c7a7c5ccf9eacde089d46d293d522",
   "pins" : [
     {
       "identity" : "bdk-swift",
@@ -44,6 +44,15 @@
       "state" : {
         "revision" : "04ccff117f6549121d5721ec84fdf0162122b90e",
         "version" : "0.5.0"
+      }
+    },
+    {
+      "identity" : "vault",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SparrowTek/Vault.git",
+      "state" : {
+        "revision" : "25df48f62a5382c217cfe67f2a12e6efe8f60ec4",
+        "version" : "1.2.0"
       }
     }
   ],

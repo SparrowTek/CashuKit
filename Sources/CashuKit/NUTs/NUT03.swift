@@ -173,8 +173,9 @@ public struct SwapService: Sendable {
     /// - parameters:
     ///   - request: The swap request with inputs and outputs
     ///   - mintURL: The base URL of the mint
+    ///   - accessToken: Optional access token for NUT-22 authentication
     /// - returns: PostSwapResponse with blind signatures
-    public func executeSwap(_ request: PostSwapRequest, at mintURL: String) async throws -> PostSwapResponse {
+    public func executeSwap(_ request: PostSwapRequest, at mintURL: String, accessToken: AccessToken? = nil) async throws -> PostSwapResponse {
         // Enhanced validation using NUTValidation
         let validation = NUTValidation.validateSwapRequest(request)
         guard validation.isValid else {
@@ -185,8 +186,17 @@ public struct SwapService: Sendable {
         let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
-        // Execute swap
-        return try await router.execute(.swap(request))
+        // Execute swap - use NUT22 request if access token is provided
+        if let accessToken = accessToken {
+            let nut22Request = NUT22SwapRequest(
+                inputs: request.inputs,
+                outputs: request.outputs,
+                accessToken: accessToken
+            )
+            return try await router.execute(.swapWithAccessToken(nut22Request))
+        } else {
+            return try await router.execute(.swap(request))
+        }
     }
     
     /// Prepare a swap to send tokens (split for target amount)
@@ -538,6 +548,7 @@ public struct SwapService: Sendable {
 
 enum SwapAPI {
     case swap(PostSwapRequest)
+    case swapWithAccessToken(NUT22SwapRequest)
 }
 
 extension SwapAPI: EndpointType {
@@ -551,14 +562,14 @@ extension SwapAPI: EndpointType {
     
     var path: String {
         switch self {
-        case .swap:
+        case .swap, .swapWithAccessToken:
             return "/v1/swap"
         }
     }
     
     var httpMethod: HTTPMethod {
         switch self {
-        case .swap:
+        case .swap, .swapWithAccessToken:
             return .post
         }
     }
@@ -566,6 +577,8 @@ extension SwapAPI: EndpointType {
     var task: HTTPTask {
         switch self {
         case .swap(let request):
+            return .requestParameters(encoding: .jsonEncodableEncoding(encodable: request))
+        case .swapWithAccessToken(let request):
             return .requestParameters(encoding: .jsonEncodableEncoding(encodable: request))
         }
     }
