@@ -1,6 +1,24 @@
 {
-  "originHash" : "2a57f5a6c38e9aed34845264bcac54e9aac873332c41a4bf665a2bc6fd502df4",
+  "originHash" : "65de1eccc95f4a6be3ca116dd476ab01e62dccbaf0f54cfe94f23254385482ea",
   "pins" : [
+    {
+      "identity" : "bigint",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/attaswift/BigInt",
+      "state" : {
+        "revision" : "99c4b9fb0f52dc9182aee106b07c3d205583b98c",
+        "version" : "5.6.0"
+      }
+    },
+    {
+      "identity" : "cryptoswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/krzyzanowskim/CryptoSwift",
+      "state" : {
+        "revision" : "e45a26384239e028ec87fbcc788f513b67e10d8f",
+        "version" : "1.9.0"
+      }
+    },
     {
       "identity" : "swift-secp256k1",
       "kind" : "remoteSourceControl",

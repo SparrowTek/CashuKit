@@ -10,6 +10,7 @@ import Foundation
 @preconcurrency import P256K
 import CryptoKit
 import Security
+import BigInt
 
 // MARK: - NUT-12: Offline ecash signature validation
 
@@ -92,21 +93,26 @@ private func multiplyScalarsModular(_ a: Data, _ b: Data) throws -> Data {
 /// Subtract two scalars modulo the secp256k1 curve order using BigInt implementation
 private func subtractScalarsModular(_ a: Data, _ b: Data) throws -> Data {
     // Convert to big integers for proper modular arithmetic
-    let aInt = BigUInt(a)
-    let bInt = BigUInt(b)
-    let order = BigUInt(SECP256K1_ORDER_DATA)
+    let aInt = BigInt(sign: .plus, magnitude: BigUInt(a))
+    let bInt = BigInt(sign: .plus, magnitude: BigUInt(b))
+    let order = BigInt(sign: .plus, magnitude: BigUInt(SECP256K1_ORDER_DATA))
     
     // Perform modular subtraction: (a - b) mod order
-    let result = (aInt + order - bInt) % order
+    var result = (aInt - bInt) % order
+    
+    // Ensure positive result
+    if result < 0 {
+        result += order
+    }
     
     // Convert back to 32-byte data
-    var resultData = result.serialize()
+    let resultData = result.magnitude.serialize()
     
     // Ensure 32-byte length
     if resultData.count < 32 {
-        resultData = Data(repeating: 0, count: 32 - resultData.count) + resultData
+        return Data(repeating: 0, count: 32 - resultData.count) + resultData
     } else if resultData.count > 32 {
-        resultData = Data(resultData.suffix(32))
+        return Data(resultData.suffix(32))
     }
     
     return resultData
@@ -114,99 +120,22 @@ private func subtractScalarsModular(_ a: Data, _ b: Data) throws -> Data {
 
 // MARK: - Scalar Arithmetic Helpers
 
-/// BigUInt implementation for modular arithmetic
-private struct BigUInt: Equatable {
-    private let data: Data
-    
-    init(_ data: Data) {
-        self.data = data
-    }
-    
-    /// Add two BigUInt values
-    static func + (lhs: BigUInt, rhs: BigUInt) -> BigUInt {
-        var result = Data(count: max(lhs.data.count, rhs.data.count) + 1)
-        var carry: UInt16 = 0
-        
-        let maxCount = max(lhs.data.count, rhs.data.count)
-        for i in 0..<maxCount {
-            let aVal = i < lhs.data.count ? UInt16(lhs.data[lhs.data.count - 1 - i]) : 0
-            let bVal = i < rhs.data.count ? UInt16(rhs.data[rhs.data.count - 1 - i]) : 0
-            
-            let sum = aVal + bVal + carry
-            result[result.count - 1 - i] = UInt8(sum & 0xFF)
-            carry = sum >> 8
-        }
-        
-        if carry > 0 {
-            result[result.count - maxCount - 1] = UInt8(carry)
-        }
-        
-        return BigUInt(result.drop { $0 == 0 }.isEmpty ? Data([0]) : Data(result.drop { $0 == 0 }))
-    }
-    
-    /// Subtract two BigUInt values
-    static func - (lhs: BigUInt, rhs: BigUInt) -> BigUInt {
-        if lhs == rhs {
-            return BigUInt(Data([0]))
-        }
-        
-        var result = Data(count: lhs.data.count)
-        var borrow: Int16 = 0
-        
-        for i in 0..<lhs.data.count {
-            let aVal = Int16(lhs.data[lhs.data.count - 1 - i])
-            let bVal = i < rhs.data.count ? Int16(rhs.data[rhs.data.count - 1 - i]) : 0
-            
-            let diff = aVal - bVal - borrow
-            if diff < 0 {
-                result[result.count - 1 - i] = UInt8(diff + 256)
-                borrow = 1
-            } else {
-                result[result.count - 1 - i] = UInt8(diff)
-                borrow = 0
-            }
-        }
-        
-        return BigUInt(result.drop { $0 == 0 }.isEmpty ? Data([0]) : Data(result.drop { $0 == 0 }))
-    }
-    
-    /// Modulo operation
-    static func % (lhs: BigUInt, rhs: BigUInt) -> BigUInt {
-        // Simple implementation - this should be improved for production
-        var result = lhs
-        while result >= rhs {
-            result = result - rhs
-        }
-        return result
-    }
-    
-    /// Comparison
-    static func >= (lhs: BigUInt, rhs: BigUInt) -> Bool {
-        if lhs.data.count != rhs.data.count {
-            return lhs.data.count > rhs.data.count
-        }
-        
-        for i in 0..<lhs.data.count {
-            if lhs.data[i] != rhs.data[i] {
-                return lhs.data[i] > rhs.data[i]
-            }
-        }
-        return true
-    }
-    
-    /// Serialize to Data
-    func serialize() -> Data {
-        return data
-    }
-}
-
 /// Reduce a scalar to ensure it's within the secp256k1 curve order
 private func reduceScalar(_ scalar: Data) -> Data {
     let scalarInt = BigUInt(scalar)
     let order = BigUInt(SECP256K1_ORDER_DATA)
     
     if scalarInt >= order {
-        return (scalarInt % order).serialize()
+        let reduced = scalarInt % order
+        let resultData = reduced.serialize()
+        
+        // Ensure 32-byte length
+        if resultData.count < 32 {
+            return Data(repeating: 0, count: 32 - resultData.count) + resultData
+        } else if resultData.count > 32 {
+            return Data(resultData.suffix(32))
+        }
+        return resultData
     }
     
     return scalar

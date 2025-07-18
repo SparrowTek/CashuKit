@@ -7,6 +7,7 @@
 
 import Foundation
 import CryptoKit
+import CommonCrypto // Import CommonCrypto for PBKDF2
 
 // MARK: - BIP39 Implementation
 
@@ -176,7 +177,7 @@ public enum BIP39 {
     private static func pbkdf2(password: Data, salt: Data, iterations: Int, keyLength: Int) -> Data {
         var derivedKey = Data(count: keyLength)
         
-        derivedKey.withUnsafeMutableBytes { derivedKeyBytes in
+        _ = derivedKey.withUnsafeMutableBytes { derivedKeyBytes in
             password.withUnsafeBytes { passwordBytes in
                 salt.withUnsafeBytes { saltBytes in
                     CCKeyDerivationPBKDF(
@@ -433,6 +434,3 @@ extension String {
         return padding + self
     }
 }
-
-// Import CommonCrypto for PBKDF2
-import CommonCrypto
