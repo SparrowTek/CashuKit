@@ -2,7 +2,7 @@
 //  NUTValidation.swift
 //  CashuKit
 //
-//  Centralized validation utilities for NUT protocol inputs
+//  Created by Thomas Rademaker on 6/27/25.
 //
 
 import Foundation

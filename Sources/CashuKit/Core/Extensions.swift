@@ -2,7 +2,7 @@
 //  Extensions.swift
 //  CashuKit
 //
-//  Shared extensions for CashuKit
+//  Created by Thomas Rademaker on 6/27/25.
 //
 
 import Foundation

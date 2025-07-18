@@ -306,27 +306,25 @@ extension CashuWallet {
         paymentPlans: [PartialPaymentPlan],
         timeout: TimeInterval = 60
     ) async throws -> [PartialPaymentResult] {
-        // Validate payment plans
+        // Create executor with configuration
+        let config = MultiPathPaymentExecutor.Configuration(
+            timeout: timeout,
+            optimisticMode: true
+        )
+        let executor = MultiPathPaymentExecutor(configuration: config)
+        
+        // Create wallet mapping - in this case, all plans use the same wallet instance
+        var wallets: [String: CashuWallet] = [:]
         for plan in paymentPlans {
-            guard plan.validate() else {
-                throw CashuError.validationFailed
-            }
+            wallets[plan.mintURL] = self
         }
         
-        // TODO: Implement actual MPP coordination
-        // This would involve:
-        // 1. Creating melt quotes at each mint with partial amounts
-        // 2. Executing all melts simultaneously
-        // 3. Handling atomic success/failure
-        
-        // Placeholder implementation
-        return paymentPlans.map { plan in
-            PartialPaymentResult(
-                mintURL: plan.mintURL,
-                success: false,
-                error: CashuError.nutNotImplemented("15")
-            )
-        }
+        // Execute the multi-path payment
+        return try await executor.execute(
+            invoice: invoice,
+            paymentPlans: paymentPlans,
+            wallets: wallets
+        )
     }
     
     /// Request a melt quote with MPP support
@@ -344,9 +342,62 @@ extension CashuWallet {
             partialAmountMsat: partialAmountMsat
         )
         
-        // TODO: Send request to mint endpoint
-        // This would use the existing melt quote endpoint with the MPP options
+        // TODO: Implement actual HTTP request using the router pattern
+        // This would require adding MPP support to the API router
         
+        throw CashuError.nutNotImplemented("15")
+    }
+    
+    /// Create a multi-path payment plan for an invoice
+    /// - Parameters:
+    ///   - invoice: BOLT11 Lightning invoice to pay
+    ///   - mints: Dictionary of mint URLs to their capabilities
+    ///   - strategy: Optimization strategy to use
+    /// - Returns: Array of partial payment plans
+    public func createMultiPathPaymentPlan(
+        invoice: String,
+        totalAmount: Int,
+        mints: [String: MintCapability],
+        strategy: PaymentPathOptimizer.OptimizationStrategy = .minimizeMints
+    ) async throws -> [PartialPaymentPlan] {
+        // Optimize the payment paths
+        let allocations = try PaymentPathOptimizer.optimize(
+            amount: totalAmount,
+            availableMints: mints,
+            strategy: strategy
+        )
+        
+        // Create payment plans for each allocation
+        var plans: [PartialPaymentPlan] = []
+        
+        for (mintURL, amount) in allocations {
+            // Select proofs for this mint
+            // In a real implementation, this would query the wallet's proof storage
+            let proofs = try await selectProofsForAmount(amount, mintURL: mintURL)
+            
+            let plan = PartialPaymentPlan(
+                mintURL: mintURL,
+                amount: amount,
+                proofs: proofs,
+                unit: "sat" // TODO: Support other units
+            )
+            
+            plans.append(plan)
+        }
+        
+        return plans
+    }
+    
+    /// Select proofs for a specific amount from a mint
+    private func selectProofsForAmount(_ amount: Int, mintURL: String) async throws -> [Proof] {
+        // This is a simplified implementation
+        // In reality, this would:
+        // 1. Query the wallet's proof storage
+        // 2. Filter proofs by mint URL
+        // 3. Select optimal proofs for the amount
+        // 4. Handle change if necessary
+        
+        // For now, return empty array as placeholder
         throw CashuError.nutNotImplemented("15")
     }
 }

@@ -2,7 +2,7 @@
 //  UserFriendlyErrors.swift
 //  CashuKit
 //
-//  User-friendly error messages and recovery suggestions
+//  Created by Thomas Rademaker on 6/27/25.
 //
 
 import Foundation
