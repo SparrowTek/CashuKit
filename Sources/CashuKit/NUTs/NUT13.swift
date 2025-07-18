@@ -10,6 +10,7 @@ import P256K
 import CryptoKit
 import BitcoinDevKit
 import CommonCrypto
+import BigInt
 
 // MARK: - NUT-13 Constants
 
@@ -266,7 +267,7 @@ private func createSeedFromMnemonic(mnemonic: String, passphrase: String) -> Dat
     
     // BIP39 specifies PBKDF2 with HMAC-SHA512, 2048 iterations
     var seed = Data(count: 64)
-    seed.withUnsafeMutableBytes { seedBytes in
+    _ = seed.withUnsafeMutableBytes { seedBytes in
         salt.withUnsafeBytes { saltBytes in
             mnemonic.withUnsafeBytes { mnemonicBytes in
                 CCKeyDerivationPBKDF(
@@ -289,16 +290,19 @@ private func createMasterKeyFromSeed(seed: Data) -> Data {
 }
 
 private func deriveChildKeyCustom(parentKey: Data, index: UInt32) throws -> Data {
+    // BIP32 constants for secp256k1
+    guard let curveOrder = BigInt("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", radix: 16) else { throw CashuError.keyGenerationFailed }
+    
     let chainCode = parentKey.suffix(32)
     let privateKey = parentKey.prefix(32)
     
     var data = Data()
     if index & 0x80000000 != 0 {
-        // Hardened derivation
+        // Hardened derivation: data = 0x00 || privateKey || index
         data.append(0x00)
         data.append(privateKey)
     } else {
-        // Non-hardened derivation
+        // Non-hardened derivation: data = publicKey || index
         let privateKeyObject = try P256K.KeyAgreement.PrivateKey(dataRepresentation: privateKey)
         data.append(privateKeyObject.publicKey.dataRepresentation)
     }
@@ -306,10 +310,39 @@ private func deriveChildKeyCustom(parentKey: Data, index: UInt32) throws -> Data
     let indexBytes = index.bigEndianBytes
     data.append(contentsOf: indexBytes)
     
+    // HMAC-SHA512(chainCode, data)
     let hmac = HMAC.sha512(key: chainCode, data: data)
-    let childPrivateKey = hmac.prefix(32)
-    let childChainCode = hmac.suffix(32)
+    let il = hmac.prefix(32)  // Left 32 bytes
+    let childChainCode = hmac.suffix(32)  // Right 32 bytes
     
+    // Convert to BigInt for modular arithmetic
+    let ilBigInt = BigInt(il)
+    let parentKeyBigInt = BigInt(privateKey)
+    
+    // Check if il >= curve order (invalid key)
+    guard ilBigInt < curveOrder else {
+        throw CashuError.keyGenerationFailed
+    }
+    
+    // Child private key = (il + parent private key) mod n
+    let childKeyBigInt = (ilBigInt + parentKeyBigInt) % curveOrder
+    
+    // Check if result is zero (invalid key)
+    guard childKeyBigInt != 0 else {
+        throw CashuError.keyGenerationFailed
+    }
+    
+    // Convert back to Data (32 bytes, big-endian)
+    var childPrivateKey = childKeyBigInt.serialize()
+    
+    // Ensure it's exactly 32 bytes (pad with zeros if needed)
+    if childPrivateKey.count < 32 {
+        childPrivateKey = Data(repeating: 0, count: 32 - childPrivateKey.count) + childPrivateKey
+    } else if childPrivateKey.count > 32 {
+        childPrivateKey = childPrivateKey.suffix(32)
+    }
+    
+    // Return private key || chain code
     var result = Data()
     result.append(childPrivateKey)
     result.append(childChainCode)
@@ -375,6 +408,20 @@ extension Data {
             SecRandomCopyBytes(kSecRandomDefault, count, bytes.baseAddress!)
         }
         return data
+    }
+}
+
+// MARK: - BigInt Extensions for BIP32
+
+extension BigInt {
+    /// Initialize BigInt from Data (big-endian)
+    init(_ data: Data) {
+        self.init(sign: .plus, magnitude: BigUInt(data))
+    }
+    
+    /// Convert BigInt to Data (big-endian)
+    func serialize() -> Data {
+        return self.magnitude.serialize()
     }
 }
 

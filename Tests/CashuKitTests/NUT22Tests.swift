@@ -177,7 +177,8 @@ struct NUT22Tests {
     @Test("AccessTokenService initialization")
     func testAccessTokenServiceInitialization() async {
         let networkService = MockNetworkService()
-        let service = AccessTokenService(networkService: networkService)
+        let keyExchangeService = await KeyExchangeService()
+        let service = AccessTokenService(networkService: networkService, keyExchangeService: keyExchangeService)
         
         // Should have no tokens initially
         #expect(await service.hasAccessTokens(for: "https://mint.example.com") == false)
@@ -186,7 +187,8 @@ struct NUT22Tests {
     @Test("AccessTokenService token management")
     func testAccessTokenServiceTokenManagement() async {
         let networkService = MockNetworkService()
-        let service = AccessTokenService(networkService: networkService)
+        let keyExchangeService = await KeyExchangeService()
+        let service = AccessTokenService(networkService: networkService, keyExchangeService: keyExchangeService)
         
         let mintURL = "https://mint.example.com"
         let _ = Proof(amount: 1, id: "keyset1", secret: "secret1", C: "C1")

@@ -47,7 +47,7 @@ struct IntegrationTests {
         // Create a mock token for testing
         let proof = Proof(
             amount: 1000,
-            id: "test-keyset-id",
+            id: "009a1f293253e41e",
             secret: "test-secret-12345",
             C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
@@ -85,10 +85,10 @@ struct IntegrationTests {
         
         // Test adding proofs
         let proofs = [
-            Proof(amount: 1, id: "keyset1", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
-            Proof(amount: 2, id: "keyset1", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890"),
-            Proof(amount: 4, id: "keyset1", secret: "secret3", C: "1234567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890"),
-            Proof(amount: 8, id: "keyset2", secret: "secret4", C: "567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890abcd")
+            Proof(amount: 1, id: "0000000000000001", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+            Proof(amount: 2, id: "0000000000000001", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890"),
+            Proof(amount: 4, id: "0000000000000001", secret: "secret3", C: "1234567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890"),
+            Proof(amount: 8, id: "0000000000000002", secret: "secret4", C: "567890abcdefdeadbeef1234567890abcdef1234567890abcdef1234567890abcd")
         ]
         
         try await proofManager.addProofs(proofs)
@@ -98,10 +98,10 @@ struct IntegrationTests {
         #expect(totalBalance == 15)
         
         // Test keyset-specific balance
-        let keyset1Balance = try await proofManager.getBalance(keysetID: "keyset1")
+        let keyset1Balance = try await proofManager.getBalance(keysetID: "0000000000000001")
         #expect(keyset1Balance == 7) // 1 + 2 + 4
         
-        let keyset2Balance = try await proofManager.getBalance(keysetID: "keyset2")
+        let keyset2Balance = try await proofManager.getBalance(keysetID: "0000000000000002")
         #expect(keyset2Balance == 8)
         
         // Test proof selection
@@ -125,8 +125,8 @@ struct IntegrationTests {
     @Test
     func testMultiKeysetTokenWorkflow() async throws {
         // Create proofs from different keysets
-        let proof1 = Proof(amount: 100, id: "keyset1", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-        let proof2 = Proof(amount: 200, id: "keyset2", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890")
+        let proof1 = Proof(amount: 100, id: "0000000000000001", secret: "secret1", C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+        let proof2 = Proof(amount: 200, id: "0000000000000002", secret: "secret2", C: "abcdef1234567890deadbeef1234567890abcdef1234567890abcdef1234567890")
         
         // Create token with proofs from different keysets
         let token = CashuToken(
@@ -195,7 +195,7 @@ struct IntegrationTests {
     func testTokenFormatCompatibility() async throws {
         let proof = Proof(
             amount: 1000,
-            id: "test-keyset-id",
+            id: "009a1f293253e41e",
             secret: "test-secret",
             C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
@@ -244,7 +244,7 @@ struct IntegrationTests {
         for i in 0..<100 {
             let proof = Proof(
                 amount: i + 1,
-                id: "keyset-\(i % 10)",
+                id: String(format: "%016x", i % 10),
                 secret: "secret-\(i)",
                 C: String(format: "%064x", i) // Create valid hex string
             )
@@ -284,7 +284,7 @@ struct IntegrationTests {
         
         let proof = Proof(
             amount: 1000,
-            id: "test-keyset-id",
+            id: "009a1f293253e41e",
             secret: "test-secret",
             C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
@@ -308,7 +308,7 @@ struct IntegrationTests {
     func testSerializationPerformance() async throws {
         let proof = Proof(
             amount: 1000,
-            id: "test-keyset-id",
+            id: "009a1f293253e41e",
             secret: "test-secret",
             C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
@@ -355,7 +355,7 @@ struct IntegrationTests {
         // Test token with minimum amount
         let minProof = Proof(
             amount: 1,
-            id: "min-keyset-id",
+            id: "0000000000000001",
             secret: "min-secret",
             C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
@@ -373,7 +373,7 @@ struct IntegrationTests {
         // Test token with maximum reasonable amount
         let maxProof = Proof(
             amount: Int.max,
-            id: "max-keyset-id",
+            id: "ffffffffffffffff",
             secret: "max-secret",
             C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
@@ -421,7 +421,7 @@ struct IntegrationTests {
         for i in 0..<10 {
             let proof = Proof(
                 amount: (i + 1) * 100,
-                id: "keyset-\(i)",
+                id: String(format: "%016x", i),
                 secret: "secret-\(i)",
                 C: String(format: "%064x", i)
             )
@@ -459,7 +459,7 @@ struct IntegrationTests {
         for _ in 0..<100 {
             let proof = Proof(
                 amount: 1000,
-                id: "memory-test-keyset",
+                id: "0123456789abcdef",
                 secret: "memory-test-secret",
                 C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
             )
