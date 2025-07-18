@@ -387,6 +387,38 @@ public struct MeltService: Sendable {
         return try await router.execute(.requestMeltQuote(method.rawValue, quoteRequest))
     }
     
+    /// Request a melt quote with MPP support (NUT-15)
+    /// - parameters:
+    ///   - request: The payment request (e.g., Lightning invoice)
+    ///   - partialAmountMsat: Partial amount in millisats for MPP
+    ///   - unit: Currency unit
+    ///   - mintURL: The base URL of the mint
+    /// - returns: PostMeltQuoteResponse with quote information
+    public func requestMeltQuoteWithMPP(
+        request: String,
+        partialAmountMsat: Int,
+        unit: String,
+        at mintURL: String
+    ) async throws -> PostMeltQuoteResponse {
+        let quoteRequest = PostMeltQuoteBolt11Request.withMPP(
+            request: request,
+            unit: unit,
+            partialAmountMsat: partialAmountMsat
+        )
+        
+        // Validate request
+        guard quoteRequest.validate() else {
+            throw CashuError.validationFailed
+        }
+        
+        // Setup networking
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
+        CashuEnvironment.current.setup(baseURL: normalizedURL)
+        
+        // Request quote with MPP
+        return try await router.execute(.requestMeltQuoteWithMPP("bolt11", quoteRequest))
+    }
+    
     /// Check the state of a melt quote
     /// - parameters:
     ///   - quoteID: The quote ID to check
@@ -1000,6 +1032,7 @@ public struct MeltService: Sendable {
 
 enum MeltAPI {
     case requestMeltQuote(String, PostMeltQuoteRequest)
+    case requestMeltQuoteWithMPP(String, PostMeltQuoteBolt11Request)  // NUT-15 support
     case checkMeltQuote(String, String)
     case executeMelt(String, PostMeltRequest)
 }
@@ -1015,7 +1048,7 @@ extension MeltAPI: EndpointType {
     
     var path: String {
         switch self {
-        case .requestMeltQuote(let method, _):
+        case .requestMeltQuote(let method, _), .requestMeltQuoteWithMPP(let method, _):
             return "/v1/melt/quote/\(method)"
         case .checkMeltQuote(let method, let quoteID):
             return "/v1/melt/quote/\(method)/\(quoteID)"
@@ -1026,7 +1059,7 @@ extension MeltAPI: EndpointType {
     
     var httpMethod: HTTPMethod {
         switch self {
-        case .requestMeltQuote, .executeMelt:
+        case .requestMeltQuote, .requestMeltQuoteWithMPP, .executeMelt:
             return .post
         case .checkMeltQuote:
             return .get
@@ -1036,6 +1069,8 @@ extension MeltAPI: EndpointType {
     var task: HTTPTask {
         switch self {
         case .requestMeltQuote(_, let request):
+            return .requestParameters(encoding: .jsonEncodableEncoding(encodable: request))
+        case .requestMeltQuoteWithMPP(_, let request):
             return .requestParameters(encoding: .jsonEncodableEncoding(encodable: request))
         case .checkMeltQuote:
             return .request

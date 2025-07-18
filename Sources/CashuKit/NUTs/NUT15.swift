@@ -336,16 +336,15 @@ extension CashuWallet {
         invoice: String,
         partialAmountMsat: Int
     ) async throws -> PostMeltQuoteResponse {
-        let _ = PostMeltQuoteBolt11Request.withMPP(
+        // Create a new MeltService instance for this operation
+        let meltService = await MeltService()
+        
+        return try await meltService.requestMeltQuoteWithMPP(
             request: invoice,
+            partialAmountMsat: partialAmountMsat,
             unit: "sat",
-            partialAmountMsat: partialAmountMsat
+            at: mintURL
         )
-        
-        // TODO: Implement actual HTTP request using the router pattern
-        // This would require adding MPP support to the API router
-        
-        throw CashuError.nutNotImplemented("15")
     }
     
     /// Create a multi-path payment plan for an invoice
