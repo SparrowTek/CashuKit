@@ -67,7 +67,7 @@ struct TokenUtilsTests {
     func tokenSerializationV4() async throws {
         let proof = Proof(
             amount: 100,
-            id: "test-keyset-id",
+            id: "009a1f293253e41e",
             secret: "test-secret",
             C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
@@ -78,11 +78,11 @@ struct TokenUtilsTests {
             memo: "Test memo"
         )
         
-        // Test V4 serialization (currently falls back to V3)
+        // Test V4 serialization (CBOR format)
         let serialized = try CashuTokenUtils.serializeTokenV4(token)
-        #expect(serialized.hasPrefix("cashuA")) // Falls back to V3
+        #expect(serialized.hasPrefix("cashuB")) // V4 CBOR format
         
-        // Test V4 deserialization (currently falls back to V3)
+        // Test V4 deserialization
         let deserialized = try CashuTokenUtils.deserializeTokenV4(serialized)
         #expect(deserialized.token.count == 1)
         #expect(deserialized.token[0].proofs[0].amount == 100)
@@ -92,7 +92,7 @@ struct TokenUtilsTests {
     func genericTokenSerialization() async throws {
         let proof = Proof(
             amount: 100,
-            id: "test-keyset-id",
+            id: "009a1f293253e41e",
             secret: "test-secret",
             C: "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
@@ -113,7 +113,7 @@ struct TokenUtilsTests {
         
         // Test V4 serialization
         let v4Serialized = try CashuTokenUtils.serializeToken(token, version: .v4)
-        #expect(v4Serialized.hasPrefix("cashuA")) // Falls back to V3
+        #expect(v4Serialized.hasPrefix("cashuB")) // V4 CBOR format
         
         // Test with URI
         let withURI = try CashuTokenUtils.serializeToken(token, includeURI: true)

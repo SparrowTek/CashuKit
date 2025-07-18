@@ -91,6 +91,8 @@ public enum CashuError: Error, Sendable {
     case invalidPreimage
     case locktimeNotExpired
     case invalidProofType
+    case invalidWitness
+    case noActiveKeyset
 }
 
 // MARK: - HTTP Error Response (NUT-00 Specification)
@@ -144,7 +146,7 @@ extension CashuError {
              .keysetNotFound, .keysetExpired, .unsupportedOperation, .concurrencyError,
              .unsupportedVersion, .invalidMnemonic, .invalidSecret,
              .invalidSignature, .mismatchedArrayLengths, .invalidPreimage,
-             .locktimeNotExpired, .invalidProofType:
+             .locktimeNotExpired, .invalidProofType, .invalidWitness, .noActiveKeyset:
             return .`protocol`
         }
     }
@@ -298,6 +300,10 @@ extension CashuError: LocalizedError {
             return "HTLC locktime has not expired yet"
         case .invalidProofType:
             return "Proof is not an HTLC type"
+        case .invalidWitness:
+            return "Invalid witness data for HTLC proof"
+        case .noActiveKeyset:
+            return "No active keyset found for mint"
         }
     }
     

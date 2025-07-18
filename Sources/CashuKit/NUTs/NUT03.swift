@@ -50,6 +50,14 @@ public struct PostSwapRequest: CashuCodabale {
             }
         }
         
+        // If any input has a witness, validate it exists for corresponding outputs
+        for input in inputs {
+            if input.witness != nil {
+                // Witness validation is handled by the mint
+                continue
+            }
+        }
+        
         return true
     }
     

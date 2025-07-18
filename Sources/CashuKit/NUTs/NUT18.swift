@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftCBOR
 
 // MARK: - NUT-18: Payment Requests
 
@@ -388,7 +389,7 @@ public struct PaymentRequestEncoder: Sendable {
         }
         
         // Decode from CBOR
-        let request = try decodeFromCBOR(cborData)
+        let request: PaymentRequest = try decodeFromCBOR(cborData, type: PaymentRequest.self)
         
         // Validate the decoded request
         try request.validate()
@@ -396,21 +397,6 @@ public struct PaymentRequestEncoder: Sendable {
         return request
     }
     
-    /// Encode to CBOR (simplified implementation)
-    private static func encodeToCBOR(_ request: PaymentRequest) throws -> Data {
-        // This is a simplified CBOR encoding
-        // In a real implementation, you would use a proper CBOR library
-        let encoder = JSONEncoder()
-        return try encoder.encode(request)
-    }
-    
-    /// Decode from CBOR (simplified implementation)
-    private static func decodeFromCBOR(_ data: Data) throws -> PaymentRequest {
-        // This is a simplified CBOR decoding
-        // In a real implementation, you would use a proper CBOR library
-        let decoder = JSONDecoder()
-        return try decoder.decode(PaymentRequest.self, from: data)
-    }
 }
 
 // MARK: - Payment Request Builder

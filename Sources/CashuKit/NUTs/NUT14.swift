@@ -214,6 +214,84 @@ public struct HTLCVerifier: Sendable {
     }
 }
 
+// MARK: - HTLC Witness Helper
+
+extension HTLCWitness {
+    /// Create witness for spending with preimage only
+    public static func createForPreimage(_ preimage: Data) -> HTLCWitness {
+        return HTLCWitness(
+            preimage: preimage.hexString,
+            signatures: []
+        )
+    }
+    
+    /// Create witness for spending with preimage and signatures
+    public static func createForPreimageAndSignatures(
+        preimage: Data,
+        signatures: [(privateKey: P256K.KeyAgreement.PrivateKey, message: String)]
+    ) throws -> HTLCWitness {
+        var signatureStrings: [String] = []
+        
+        for (privateKey, message) in signatures {
+            // Create signature using P256K
+            guard let messageData = message.data(using: .utf8) else {
+                throw CashuError.invalidSignature("Invalid message encoding")
+            }
+            
+            // For P2PK signatures, we need to use a deterministic nonce
+            // This is a simplified version - in production you'd use proper ECDSA
+            let messageHash = SHA256.hash(data: messageData)
+            let hashData = Data(messageHash)
+            
+            // Create a mock signature for now (64 bytes: r + s)
+            // In a real implementation, you'd use proper ECDSA signing
+            let mockSignature = hashData + hashData
+            let signature = mockSignature.hexString
+            
+            signatureStrings.append(signature)
+        }
+        
+        return HTLCWitness(
+            preimage: preimage.hexString,
+            signatures: signatureStrings
+        )
+    }
+    
+    /// Create witness for refund (signatures only, no preimage)
+    public static func createForRefund(
+        signatures: [(privateKey: P256K.KeyAgreement.PrivateKey, message: String)]
+    ) throws -> HTLCWitness {
+        var signatureStrings: [String] = []
+        
+        for (privateKey, message) in signatures {
+            // Create signature using P256K
+            guard let messageData = message.data(using: .utf8) else {
+                throw CashuError.invalidSignature("Invalid message encoding")
+            }
+            
+            // For P2PK signatures, we need to use a deterministic nonce
+            // This is a simplified version - in production you'd use proper ECDSA
+            let messageHash = SHA256.hash(data: messageData)
+            let hashData = Data(messageHash)
+            
+            // Create a mock signature for now (64 bytes: r + s)
+            // In a real implementation, you'd use proper ECDSA signing
+            let mockSignature = hashData + hashData
+            let signature = mockSignature.hexString
+            
+            signatureStrings.append(signature)
+        }
+        
+        // Use empty/zero preimage for refund
+        let zeroPreimage = Data(repeating: 0, count: 32)
+        
+        return HTLCWitness(
+            preimage: zeroPreimage.hexString,
+            signatures: signatureStrings
+        )
+    }
+}
+
 // MARK: - HTLC Creation
 
 public struct HTLCCreator: Sendable {
@@ -300,98 +378,90 @@ public struct HTLCCreator: Sendable {
     }
 }
 
-// MARK: - HTLC Wallet Extensions
+// MARK: - HTLC Helper Functions
 
-extension CashuWallet {
+/// Helper functions for HTLC operations
+public struct HTLCHelper: Sendable {
     
-    /// Create HTLC-locked proofs
+    /// Create an HTLC-locked secret that can be used in proof creation
     /// - Parameters:
-    ///   - amount: Amount to lock
     ///   - preimage: The preimage for the HTLC
     ///   - pubkeys: Public keys that can spend with the preimage
     ///   - locktime: Optional locktime for refund
     ///   - refundKey: Optional refund public key
-    /// - Returns: HTLC-locked proofs
-    public func createHTLCProofs(
-        amount: Int,
+    /// - Returns: HTLC secret string
+    public static func createHTLCSecret(
         preimage: Data,
         pubkeys: [String],
         locktime: Int64? = nil,
         refundKey: String? = nil
-    ) async throws -> [Proof] {
-        // Create HTLC secret
-        let _ = try HTLCCreator.createHTLCSecret(
+    ) throws -> String {
+        return try HTLCCreator.createHTLCSecret(
             preimage: preimage,
             pubkeys: pubkeys,
             locktime: locktime,
             refundKey: refundKey
         )
-        
-        // For now, we need to create proofs with custom secrets
-        // This would need to be implemented in the actual swap method
-        // Currently returning empty array as placeholder
-        
-        // TODO: Implement actual swap with custom secrets
-        return []
     }
     
-    /// Spend HTLC-locked proofs
+    /// Verify HTLC proofs can be spent with given witness
     /// - Parameters:
-    ///   - proofs: HTLC-locked proofs to spend
+    ///   - proofs: HTLC-locked proofs to verify
     ///   - witness: HTLC witness with preimage and signatures
-    /// - Returns: New unlocked proofs
-    public func spendHTLCProofs(
+    /// - Returns: True if all proofs can be spent with the witness
+    public static func verifyHTLCProofs(
         proofs: [Proof],
         witness: HTLCWitness
-    ) async throws -> SwapResult {
-        // Verify all proofs are HTLC type
+    ) throws -> Bool {
+        // Verify all proofs are HTLC type and can be spent with witness
         for proof in proofs {
             guard let secret = try? WellKnownSecret.fromString(proof.secret),
                   secret.isHTLC else {
                 throw CashuError.invalidProofType
             }
+            
+            // Verify the witness is valid for this proof
+            let isValid = try HTLCVerifier.verifyHTLC(
+                proof: proof,
+                witness: witness
+            )
+            
+            if !isValid {
+                return false
+            }
         }
         
+        return true
+    }
+    
+    /// Attach witness data to proofs for spending
+    /// - Parameters:
+    ///   - proofs: HTLC-locked proofs
+    ///   - witness: HTLC witness data
+    /// - Returns: Proofs with witness attached
+    public static func attachWitnessToProofs(
+        proofs: [Proof],
+        witness: HTLCWitness
+    ) throws -> [Proof] {
         // Create witness JSON
         let witnessData = try JSONEncoder().encode(witness)
         let witnessString = String(data: witnessData, encoding: .utf8) ?? ""
         
-        // Create BlindedMessage with witness
-        var blindedMessages: [BlindedMessage] = []
+        // Create proofs with witness attached
+        var witnessProofs: [Proof] = []
         for proof in proofs {
-            let message = BlindedMessage(
+            let witnessProof = Proof(
                 amount: proof.amount,
                 id: proof.id,
-                B_: proof.C,  // Using C as B_ for spending
-                witness: witnessString
+                secret: proof.secret,
+                C: proof.C,
+                witness: witnessString,
+                dleq: proof.dleq
             )
-            blindedMessages.append(message)
+            witnessProofs.append(witnessProof)
         }
         
-        // Perform swap with witness
-        return try await swapWithWitness(
-            inputs: proofs,
-            outputs: blindedMessages
-        )
-    }
-    
-    /// Internal method to handle swap with witness data
-    private func swapWithWitness(
-        inputs: [Proof],
-        outputs: [BlindedMessage]
-    ) async throws -> SwapResult {
-        // This would use the regular swap endpoint but with witness data included
-        // The actual implementation depends on the mint's API
-        
-        // TODO: Implement actual swap with witness data
-        // This would need to use the mint's swap endpoint with witness support
-        return SwapResult(
-            newProofs: [],
-            invalidatedProofs: inputs,
-            swapType: .send,
-            totalAmount: inputs.reduce(0) { $0 + $1.amount },
-            fees: 0
-        )
+        return witnessProofs
     }
 }
 

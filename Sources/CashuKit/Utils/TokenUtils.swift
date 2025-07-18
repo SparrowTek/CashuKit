@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftCBOR
 @preconcurrency import P256K
 
 // MARK: - Token Version Enum
@@ -114,18 +115,113 @@ public struct CashuTokenUtils {
     
     /// Serialize a CashuToken to V4 format (CBOR-encoded)
     /// Format: cashuB[base64_token_cbor]
-    /// Note: This is a simplified implementation without full CBOR support
     public static func serializeTokenV4(_ token: CashuToken, includeURI: Bool = false) throws -> String {
-        // For now, fall back to V3 format since CBOR isn't implemented
-        // TODO: Implement full CBOR serialization
-        return try serializeTokenV3(token, includeURI: includeURI)
+        // Convert token to V4 structure
+        var keysetGroups: [TokenV4.KeysetGroup] = []
+        
+        // Group proofs by keyset ID
+        var proofsByKeyset: [String: [Proof]] = [:]
+        for entry in token.token {
+            for proof in entry.proofs {
+                proofsByKeyset[proof.id, default: []].append(proof)
+            }
+        }
+        
+        // Create keyset groups
+        for (keysetID, proofs) in proofsByKeyset {
+            guard let keysetData = Data(hexString: keysetID) else {
+                throw CashuError.invalidKeysetID
+            }
+            
+            let proofsV4 = proofs.map { proof in
+                TokenV4.ProofV4(
+                    a: proof.amount,
+                    s: proof.secret,
+                    c: Data(hexString: proof.C) ?? Data()
+                )
+            }
+            
+            keysetGroups.append(TokenV4.KeysetGroup(i: keysetData, p: proofsV4))
+        }
+        
+        // Create V4 token structure
+        let tokenV4 = TokenV4(
+            m: token.token.first?.mint ?? "",
+            u: token.unit ?? "sat",
+            d: token.memo,
+            t: keysetGroups
+        )
+        
+        // Convert to CBOR
+        let cborData = try encodeToCBOR(tokenV4)
+        
+        // Base64 URL-safe encode
+        let base64Token = cborData.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        
+        let serialized = "cashuB\(base64Token)"
+        return includeURI ? "\(uriScheme)\(serialized)" : serialized
     }
     
     /// Deserialize a V4 token from serialized format
     public static func deserializeTokenV4(_ serializedToken: String) throws -> CashuToken {
-        // For now, fall back to V3 format since CBOR isn't implemented
-        // TODO: Implement full CBOR deserialization
-        return try deserializeTokenV3(serializedToken)
+        var token = serializedToken
+        
+        // Remove URI scheme if present
+        if token.hasPrefix(uriScheme) {
+            token = String(token.dropFirst(uriScheme.count))
+        }
+        
+        // Check and remove V4 prefix
+        guard token.hasPrefix("cashuB") else {
+            throw CashuError.invalidTokenFormat
+        }
+        token = String(token.dropFirst(6))
+        
+        // Base64 URL-safe decode
+        var base64 = token
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        
+        // Add padding if needed
+        while base64.count % 4 != 0 {
+            base64.append("=")
+        }
+        
+        guard let cborData = Data(base64Encoded: base64) else {
+            throw CashuError.invalidTokenFormat
+        }
+        
+        // Decode CBOR
+        let tokenV4: TokenV4 = try decodeFromCBOR(cborData)
+        
+        // Convert to CashuToken
+        var proofs: [Proof] = []
+        for keysetGroup in tokenV4.t {
+            let keysetID = keysetGroup.i.hexString
+            for proofV4 in keysetGroup.p {
+                let proof = Proof(
+                    amount: proofV4.a,
+                    id: keysetID,
+                    secret: proofV4.s,
+                    C: proofV4.c.hexString
+                )
+                proofs.append(proof)
+            }
+        }
+        
+        let tokenEntry = TokenEntry(
+            mint: tokenV4.m,
+            proofs: proofs
+        )
+        
+        return CashuToken(
+            token: [tokenEntry],
+            unit: tokenV4.u,
+            memo: tokenV4.d
+        )
     }
     
     // MARK: - Generic Token Serialization

@@ -1017,10 +1017,15 @@ public actor CashuWallet {
             throw CashuError.nutNotImplemented("NUT-09")
         }
         
-        // TODO: Implement actual NUT-09 restore request
-        // This requires the NUT-09 service to have a restore method
-        // For now, return empty array as placeholder
-        return []
+        // Create restore service
+        let restoreService = await RestoreSignatureService()
+        
+        // Request restore from mint
+        let request = PostRestoreRequest(outputs: blindedMessages)
+        let response = try await restoreService.restoreSignatures(request: request, mintURL: configuration.mintURL)
+        
+        // Extract signatures from response
+        return response.signatures
     }
     
     /// Get current keyset counters
