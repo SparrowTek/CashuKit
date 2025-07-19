@@ -75,13 +75,13 @@ public actor CashuWallet {
     private let proofManager: ProofManager
     private let mintInfoService: MintInfoService
     
-    private var mintService: MintService?
-    private var meltService: MeltService?
-    private var swapService: SwapService?
-    private var keyExchangeService: KeyExchangeService?
-    private var keysetManagementService: KeysetManagementService?
-    private var checkStateService: CheckStateService?
-    private var accessTokenService: AccessTokenService?
+    private var mintService: MintService!
+    private var meltService: MeltService!
+    private var swapService: SwapService!
+    private var keyExchangeService: KeyExchangeService!
+    private var keysetManagementService: KeysetManagementService!
+    private var checkStateService: CheckStateService!
+    private var accessTokenService: AccessTokenService!
     
     private var currentMintInfo: MintInfo?
     private var currentKeysets: [String: Keyset] = [:]
@@ -494,12 +494,10 @@ public actor CashuWallet {
             throw CashuError.invalidAmount
         }
         
-        guard let mintService  else {
-            throw CashuError.mintUnavailable
-        }
+        // Mint service is always available since it's initialized in setupServices()
         
         // Use the existing high-level mint method
-        return try await mintService.mint(
+        return try await mintService!.mint(
             amount: amount,
             method: method,
             unit: configuration.unit,
@@ -589,15 +587,13 @@ public actor CashuWallet {
             throw CashuError.walletNotInitialized
         }
         
-        guard let meltService else {
-            throw CashuError.unsupportedOperation("Melting tokens (NUT-05) is not available")
-        }
+        // Melt service is always available since it's initialized in setupServices()
         
         // Simplified implementation - use the existing high-level methods
         let availableProofs = try await proofManager.getAvailableProofs()
         
         // For now, just use the service's meltToPayment method
-        return try await meltService.meltToPayment(
+        return try await meltService!.meltToPayment(
             paymentRequest: paymentRequest,
             method: PaymentMethod.bolt11,
             unit: configuration.unit,
@@ -789,11 +785,8 @@ public actor CashuWallet {
             throw CashuError.unsupportedOperation("State check (NUT-07) is not supported by this mint")
         }
         
-        guard let checkStateService = checkStateService else {
-            throw CashuError.unsupportedOperation("State check service is not initialized")
-        }
-        
-        return try await checkStateService.checkStates(yValues: request.Ys, from: configuration.mintURL)
+        // Check state service is always available since it's initialized in setupServices()
+        return try await checkStateService!.checkStates(yValues: request.Ys, from: configuration.mintURL)
     }
     
     // MARK: - Utility Methods
@@ -852,9 +845,7 @@ public actor CashuWallet {
             throw CashuError.walletNotInitialized
         }
         
-        guard let accessTokenService = accessTokenService else {
-            throw CashuError.unsupportedOperation("Access tokens (NUT-22) are not available")
-        }
+        // Access token service is always available since it's initialized in setupServices()
         
         // Check if mint requires access tokens
         guard let mintInfo = currentMintInfo,
@@ -870,7 +861,7 @@ public actor CashuWallet {
             throw CashuError.noActiveKeyset
         }
         
-        let tokens = try await accessTokenService.requestAccessTokens(
+        let tokens = try await accessTokenService!.requestAccessTokens(
             mintURL: configuration.mintURL,
             quoteId: quoteId,
             amount: amount,
@@ -902,12 +893,10 @@ public actor CashuWallet {
     
     /// Get an available access token for operations
     public func getAccessToken() async -> AccessToken? {
-        guard let accessTokenService = accessTokenService else {
-            return nil
-        }
+        // Access token service is always available since it's initialized in setupServices()
         
         // First try to get from the service's memory
-        if let proof = await accessTokenService.getAccessToken(for: configuration.mintURL) {
+        if let proof = await accessTokenService!.getAccessToken(for: configuration.mintURL) {
             return AccessToken(access: proof.secret)
         }
         
@@ -1225,20 +1214,16 @@ public actor CashuWallet {
     
     /// Get active keysets
     public func getActiveKeysets() async throws -> [Keyset] {
-        guard let keyExchangeService = keyExchangeService else {
-            throw CashuError.notImplemented
-        }
-        return try await keyExchangeService.getActiveKeysets(from: configuration.mintURL)
+        // Key exchange service is always available since it's initialized in setupServices()
+        return try await keyExchangeService!.getActiveKeysets(from: configuration.mintURL)
     }
     
     /// Get mint keys dictionary
     /// Note: This returns the internal structure needed for unblinding operations
     internal func getMintKeys() async throws -> [String: P256K.KeyAgreement.PublicKey] {
-        guard let keyExchangeService = keyExchangeService else {
-            throw CashuError.notImplemented
-        }
+        // Key exchange service is always available since it's initialized in setupServices()
         
-        let keyResponse = try await keyExchangeService.getKeys(from: configuration.mintURL)
+        let keyResponse = try await keyExchangeService!.getKeys(from: configuration.mintURL)
         return Dictionary(uniqueKeysWithValues: keyResponse.keysets.flatMap { keyset in
             keyset.keys.compactMap { (amountStr, publicKeyHex) -> (String, P256K.KeyAgreement.PublicKey)? in
                 guard let amount = Int(amountStr),
@@ -1275,12 +1260,10 @@ public actor CashuWallet {
     
     /// Sync keysets with mint
     private func syncKeysets() async throws {
-        guard let keyExchangeService = keyExchangeService else {
-            throw CashuError.unsupportedOperation("Key exchange service is not initialized")
-        }
+        // Key exchange service is always available since it's initialized in setupServices()
         
         // Use the existing method to get active keys
-        let keysets = try await keyExchangeService.getActiveKeys(
+        let keysets = try await keyExchangeService!.getActiveKeys(
             from: configuration.mintURL, 
             unit: CurrencyUnit(rawValue: configuration.unit) ?? .sat
         )
@@ -1296,11 +1279,9 @@ public actor CashuWallet {
         let outputAmounts = createOptimalDenominations(for: amount)
         
         // Get active keyset
-        guard let keyExchangeService = self.keyExchangeService else {
-            throw CashuError.notImplemented
-        }
+        // Key exchange service is always available since it's initialized in setupServices()
         
-        let activeKeysets = try await keyExchangeService.getActiveKeysets(from: configuration.mintURL)
+        let activeKeysets = try await keyExchangeService!.getActiveKeysets(from: configuration.mintURL)
         guard let activeKeyset = activeKeysets.first(where: { $0.unit == configuration.unit }) else {
             throw CashuError.keysetInactive
         }
@@ -1326,11 +1307,9 @@ public actor CashuWallet {
     /// Unblind signatures received from the mint
     private func unblindSignatures(signatures: [BlindSignature], amount: Int) async throws -> [Proof] {
         // Get mint keys
-        guard let keyExchangeService = self.keyExchangeService else {
-            throw CashuError.notImplemented
-        }
+        // Key exchange service is always available since it's initialized in setupServices()
         
-        let keyResponse = try await keyExchangeService.getKeys(from: configuration.mintURL)
+        let keyResponse = try await keyExchangeService!.getKeys(from: configuration.mintURL)
         let mintKeys = Dictionary(uniqueKeysWithValues: keyResponse.keysets.flatMap { keyset in
             keyset.keys.compactMap { (amountStr, publicKeyHex) -> (String, P256K.KeyAgreement.PublicKey)? in
                 guard let amount = Int(amountStr),
