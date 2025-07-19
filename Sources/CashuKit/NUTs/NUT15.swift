@@ -394,15 +394,23 @@ extension CashuWallet {
     
     /// Select proofs for a specific amount from a mint
     private func selectProofsForAmount(_ amount: Int, mintURL: String) async throws -> [Proof] {
-        // This is a simplified implementation
-        // In reality, this would:
-        // 1. Query the wallet's proof storage
-        // 2. Filter proofs by mint URL
-        // 3. Select optimal proofs for the amount
-        // 4. Handle change if necessary
+        // Verify this wallet is configured for the requested mint
+        guard self.mintURL == mintURL else {
+            // In a multi-mint wallet setup, we would need to have separate wallet instances
+            // or a more sophisticated proof storage system that tracks mint URLs
+            throw CashuError.invalidMintConfiguration
+        }
         
-        // For now, return empty array as placeholder
-        throw CashuError.unsupportedOperation("Multi-path payment proof selection is not implemented")
+        // Use the wallet's existing proof selection mechanism
+        // This will select optimal proofs from the wallet's proof storage
+        let selectedProofs = try await selectProofsForAmount(amount)
+        
+        // In a real multi-mint implementation, we would filter these proofs
+        // to ensure they belong to the specified mint. For now, since
+        // each wallet instance is tied to a single mint, all proofs
+        // should be from the correct mint.
+        
+        return selectedProofs
     }
 }
 
