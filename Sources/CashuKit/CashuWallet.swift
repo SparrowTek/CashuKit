@@ -198,6 +198,11 @@ public actor CashuWallet {
         configuration.mintURL
     }
     
+    /// Get currency unit
+    public var unit: String {
+        configuration.unit
+    }
+    
     /// Check if wallet is ready for operations
     public var isReady: Bool {
         switch walletState {
@@ -1206,6 +1211,44 @@ public actor CashuWallet {
     /// Get current keyset counters
     public func getKeysetCounters() async -> [String: UInt32] {
         return await keysetCounterManager.getAllCounters()
+    }
+    
+    /// Get swap service instance
+    public func getSwapService() async -> SwapService? {
+        return swapService
+    }
+    
+    /// Get key exchange service instance
+    public func getKeyExchangeService() async -> KeyExchangeService? {
+        return keyExchangeService
+    }
+    
+    /// Get active keysets
+    public func getActiveKeysets() async throws -> [Keyset] {
+        guard let keyExchangeService = keyExchangeService else {
+            throw CashuError.notImplemented
+        }
+        return try await keyExchangeService.getActiveKeysets(from: configuration.mintURL)
+    }
+    
+    /// Get mint keys dictionary
+    /// Note: This returns the internal structure needed for unblinding operations
+    internal func getMintKeys() async throws -> [String: P256K.KeyAgreement.PublicKey] {
+        guard let keyExchangeService = keyExchangeService else {
+            throw CashuError.notImplemented
+        }
+        
+        let keyResponse = try await keyExchangeService.getKeys(from: configuration.mintURL)
+        return Dictionary(uniqueKeysWithValues: keyResponse.keysets.flatMap { keyset in
+            keyset.keys.compactMap { (amountStr, publicKeyHex) -> (String, P256K.KeyAgreement.PublicKey)? in
+                guard let amount = Int(amountStr),
+                      let publicKeyData = Data(hexString: publicKeyHex),
+                      let publicKey = try? P256K.KeyAgreement.PublicKey(dataRepresentation: publicKeyData, format: .compressed) else {
+                    return nil
+                }
+                return ("\(keyset.id)_\(amount)", publicKey)
+            }
+        })
     }
     
     // MARK: - Private Methods

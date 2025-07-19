@@ -8,6 +8,7 @@
 
 import Foundation
 import SwiftCBOR
+import P256K
 
 // MARK: - NUT-18: Payment Requests
 
@@ -571,13 +572,167 @@ public struct PaymentRequestProcessor: Sendable {
         let selectedProofs = try await wallet.selectProofsForAmount(amount)
         
         // If we have a locking condition, we need to create new locked proofs
-        if lockingCondition != nil {
-            // For now, we'll return a simplified error as implementing
-            // locking conditions requires complex swap operations
-            throw CashuError.unsupportedOperation("Locking conditions not yet implemented in payment requests")
+        if let lockingCondition = lockingCondition {
+            // Create a swap to convert selected proofs to locked proofs
+            return try await createLockedProofs(
+                from: selectedProofs,
+                lockingCondition: lockingCondition,
+                wallet: wallet
+            )
         }
         
         return selectedProofs
+    }
+    
+    /// Create locked proofs from regular proofs using a swap operation
+    private static func createLockedProofs(
+        from proofs: [Proof],
+        lockingCondition: NUT10Option,
+        wallet: CashuWallet
+    ) async throws -> [Proof] {
+        // Validate the locking condition type
+        guard lockingCondition.lockingType == .p2pk else {
+            throw CashuError.unsupportedOperation("Only P2PK locking conditions are currently supported")
+        }
+        
+        // Extract the public key from the locking condition data
+        guard !lockingCondition.data.isEmpty else {
+            throw CashuError.invalidProof
+        }
+        
+        // Create a P2PK spending condition
+        let spendingCondition = P2PKSpendingCondition.simple(publicKey: lockingCondition.data)
+        let wellKnownSecret = spendingCondition.toWellKnownSecret()
+        
+        // Get the swap service from the wallet
+        guard let swapService = await wallet.getSwapService() else {
+            throw CashuError.notImplemented
+        }
+        
+        // Get wallet mint URL
+        let walletMintURL = await wallet.mintURL
+        
+        // Calculate total amount from proofs
+        let totalAmount = proofs.reduce(0) { $0 + $1.amount }
+        
+        // Create optimal denominations for the locked proofs
+        let outputAmounts = createOptimalDenominations(for: totalAmount)
+        
+        // Prepare the swap with locked outputs
+        var lockedBlindedMessages: [BlindedMessage] = []
+        var blindingDataMap: [String: WalletBlindingData] = [:]
+        
+        // Get active keyset
+        let activeKeysets = try await wallet.getActiveKeysets()
+        let walletUnit = await wallet.unit
+        guard let activeKeyset = activeKeysets.first(where: { $0.unit == walletUnit }) else {
+            throw CashuError.keysetInactive
+        }
+        
+        // Use the well-known secret as the secret for locked proofs
+        let secretString = try wellKnownSecret.toJSONString()
+        
+        for amount in outputAmounts {
+            let blindingData = try WalletBlindingData(secret: secretString)
+            
+            let blindedMessage = BlindedMessage(
+                amount: amount,
+                id: activeKeyset.id,
+                B_: blindingData.blindedMessage.dataRepresentation.hexString
+            )
+            
+            lockedBlindedMessages.append(blindedMessage)
+            blindingDataMap[blindedMessage.B_] = blindingData
+        }
+        
+        // Create swap request
+        let swapRequest = PostSwapRequest(
+            inputs: proofs,
+            outputs: lockedBlindedMessages
+        )
+        
+        // Execute the swap
+        let swapResponse = try await swapService.executeSwap(
+            swapRequest,
+            at: walletMintURL
+        )
+        
+        // Validate response
+        guard swapResponse.signatures.count == lockedBlindedMessages.count else {
+            throw CashuError.invalidResponse
+        }
+        
+        // Unblind the signatures to create locked proofs
+        var lockedProofs: [Proof] = []
+        
+        // Get key exchange service to fetch mint keys
+        guard let keyExchangeService = await wallet.getKeyExchangeService() else {
+            throw CashuError.notImplemented
+        }
+        
+        let keyResponse = try await keyExchangeService.getKeys(from: walletMintURL)
+        let mintKeys = Dictionary(uniqueKeysWithValues: keyResponse.keysets.flatMap { keyset in
+            keyset.keys.compactMap { (amountStr, publicKeyHex) -> (String, P256K.KeyAgreement.PublicKey)? in
+                guard let amount = Int(amountStr),
+                      let publicKeyData = Data(hexString: publicKeyHex),
+                      let publicKey = try? P256K.KeyAgreement.PublicKey(dataRepresentation: publicKeyData, format: .compressed) else {
+                    return nil
+                }
+                return ("\(keyset.id)_\(amount)", publicKey)
+            }
+        })
+        
+        for (index, signature) in swapResponse.signatures.enumerated() {
+            let blindedMessage = lockedBlindedMessages[index]
+            guard let blindingData = blindingDataMap[blindedMessage.B_] else {
+                throw CashuError.missingBlindingFactor
+            }
+            
+            let mintKeyKey = "\(signature.id)_\(signature.amount)"
+            guard let mintPublicKey = mintKeys[mintKeyKey] else {
+                throw CashuError.invalidSignature("Mint public key not found for amount \(signature.amount)")
+            }
+            
+            guard let blindedSignatureData = Data(hexString: signature.C_) else {
+                throw CashuError.invalidHexString
+            }
+            
+            let unblindedToken = try Wallet.unblindSignature(
+                blindedSignature: blindedSignatureData,
+                blindingData: blindingData,
+                mintPublicKey: mintPublicKey
+            )
+            
+            // Create locked proof with the well-known secret
+            let lockedProof = Proof(
+                amount: signature.amount,
+                id: signature.id,
+                secret: secretString,
+                C: unblindedToken.signature.hexString
+            )
+            
+            lockedProofs.append(lockedProof)
+        }
+        
+        return lockedProofs
+    }
+    
+    /// Create optimal denominations for an amount (powers of 2)
+    private static func createOptimalDenominations(for amount: Int) -> [Int] {
+        var denominations: [Int] = []
+        var remaining = amount
+        var power = 0
+        
+        while remaining > 0 {
+            let denomination = 1 << power
+            if remaining & denomination != 0 {
+                denominations.append(denomination)
+                remaining -= denomination
+            }
+            power += 1
+        }
+        
+        return denominations.sorted()
     }
 }
 
