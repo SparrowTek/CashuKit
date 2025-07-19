@@ -535,6 +535,21 @@ public actor CashuWallet {
         )
     }
     
+    /// Select proofs for a specific amount
+    /// - Parameter amount: Amount to select proofs for
+    /// - Returns: Array of selected proofs
+    public func selectProofsForAmount(_ amount: Int) async throws -> [Proof] {
+        guard isReady else {
+            throw CashuError.walletNotInitialized
+        }
+        
+        guard amount > 0 else {
+            throw CashuError.invalidAmount
+        }
+        
+        return try await proofManager.selectProofs(amount: amount)
+    }
+    
     /// Receive tokens from another wallet
     /// - Parameter token: Cashu token to receive
     /// - Returns: Array of new proofs

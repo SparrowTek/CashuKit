@@ -560,15 +560,24 @@ public struct PaymentRequestProcessor: Sendable {
         wallet: CashuWallet,
         lockingCondition: NUT10Option?
     ) async throws -> [Proof] {
-        // This is a simplified implementation
-        // In a real implementation, you would:
-        // 1. Select optimal proofs for the amount
-        // 2. Apply locking conditions if specified
-        // 3. Handle change if needed
+        // Get available proofs from the wallet
+        let balanceBreakdown = try await wallet.getBalanceBreakdown()
+        guard balanceBreakdown.totalBalance >= amount else {
+            throw CashuError.insufficientFunds
+        }
         
-        // For now, we'll just return empty proofs as this would need
-        // integration with the wallet's proof selection logic
-        throw CashuError.notImplemented("Proof selection not implemented in this example")
+        // Use the wallet's internal proof selection
+        // The wallet has access to proofManager privately
+        let selectedProofs = try await wallet.selectProofsForAmount(amount)
+        
+        // If we have a locking condition, we need to create new locked proofs
+        if lockingCondition != nil {
+            // For now, we'll return a simplified error as implementing
+            // locking conditions requires complex swap operations
+            throw CashuError.unsupportedOperation("Locking conditions not yet implemented in payment requests")
+        }
+        
+        return selectedProofs
     }
 }
 
