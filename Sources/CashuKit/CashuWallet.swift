@@ -585,7 +585,7 @@ public actor CashuWallet {
         }
         
         guard let meltService else {
-            throw CashuError.nutNotImplemented("NUT-05")
+            throw CashuError.unsupportedOperation("Melting tokens (NUT-05) is not available")
         }
         
         // Simplified implementation - use the existing high-level methods
@@ -781,11 +781,11 @@ public actor CashuWallet {
     /// Execute the checkstate API call
     private func executeCheckState(_ request: PostCheckStateRequest) async throws -> PostCheckStateResponse {
         guard supportsStateCheck() else {
-            throw CashuError.nutNotImplemented("NUT-07")
+            throw CashuError.unsupportedOperation("State check (NUT-07) is not supported by this mint")
         }
         
         guard let checkStateService = checkStateService else {
-            throw CashuError.nutNotImplemented("NUT-07 service not initialized")
+            throw CashuError.unsupportedOperation("State check service is not initialized")
         }
         
         return try await checkStateService.checkStates(yValues: request.Ys, from: configuration.mintURL)
@@ -848,7 +848,7 @@ public actor CashuWallet {
         }
         
         guard let accessTokenService = accessTokenService else {
-            throw CashuError.nutNotImplemented("22")
+            throw CashuError.unsupportedOperation("Access tokens (NUT-22) are not available")
         }
         
         // Check if mint requires access tokens
@@ -1189,7 +1189,7 @@ public actor CashuWallet {
     ) async throws -> [BlindSignature] {
         // Check if mint supports NUT-09
         guard currentMintInfo?.isNUTSupported("9") ?? false else {
-            throw CashuError.nutNotImplemented("NUT-09")
+            throw CashuError.unsupportedOperation("Restore functionality (NUT-09) is not supported by this mint")
         }
         
         // Create restore service
@@ -1233,7 +1233,7 @@ public actor CashuWallet {
     /// Sync keysets with mint
     private func syncKeysets() async throws {
         guard let keyExchangeService = keyExchangeService else {
-            throw CashuError.nutNotImplemented("NUT-01")
+            throw CashuError.unsupportedOperation("Key exchange service is not initialized")
         }
         
         // Use the existing method to get active keys
@@ -1250,13 +1250,13 @@ public actor CashuWallet {
     /// Placeholder for future implementation
     private func generateBlindedOutputs(amount: Int) async throws -> [BlindedMessage] {
         // This would be implemented using the existing NUT services
-        throw CashuError.nutNotImplemented("generateBlindedOutputs")
+        throw CashuError.notImplemented
     }
     
     /// Placeholder for future implementation
     private func unblindSignatures(signatures: [BlindSignature], amount: Int) async throws -> [Proof] {
         // This would be implemented using the existing NUT services
-        throw CashuError.nutNotImplemented("unblindSignatures")
+        throw CashuError.notImplemented
     }
     
     /// Placeholder for future implementation

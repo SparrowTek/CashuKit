@@ -402,7 +402,7 @@ extension CashuWallet {
         // 4. Handle change if necessary
         
         // For now, return empty array as placeholder
-        throw CashuError.nutNotImplemented("15")
+        throw CashuError.unsupportedOperation("Multi-path payment proof selection is not implemented")
     }
 }
 
@@ -446,8 +446,8 @@ extension MintInfo {
 extension CashuError {
     /// Check if this error indicates MPP is not supported
     public var isMPPNotSupported: Bool {
-        if case .nutNotImplemented(let nut) = self {
-            return nut == "15"
+        if case .unsupportedOperation(let message) = self {
+            return message.contains("Multi-path payment") || message.contains("MPP")
         }
         return false
     }

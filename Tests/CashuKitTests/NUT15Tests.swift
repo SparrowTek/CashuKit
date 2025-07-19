@@ -273,7 +273,7 @@ struct NUT15Tests {
     
     @Test("Error handling for MPP")
     func testMPPErrorHandling() {
-        let error = CashuError.nutNotImplemented("15")
+        let error = CashuError.unsupportedOperation("Multi-path payment proof selection is not implemented")
         #expect(error.isMPPNotSupported == true)
         
         let otherError = CashuError.networkError("test")
