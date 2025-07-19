@@ -533,8 +533,17 @@ public struct MeltService: Sendable {
             
             // Get active keyset for outputs
             let activeKeysets = try await keysetManagementService.getActiveKeysets(from: mintURL)
-            guard let activeKeyset = activeKeysets.first else {
-                throw CashuError.keysetInactive
+            
+            // Filter keysets by unit
+            let unitKeysets = activeKeysets.filter { $0.unit == unit }
+            
+            guard let activeKeyset = unitKeysets.first else {
+                // Provide more specific error based on whether any keysets exist
+                if activeKeysets.isEmpty {
+                    throw CashuError.noActiveKeyset
+                } else {
+                    throw CashuError.keysetInactive
+                }
             }
             
             // Create blinded messages for change

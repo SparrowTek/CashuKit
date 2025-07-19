@@ -203,11 +203,13 @@ public struct SwapService: Sendable {
     /// - parameters:
     ///   - availableProofs: Available proofs in wallet
     ///   - targetAmount: Amount to prepare for sending
+    ///   - unit: Currency unit for the swap (optional, inferred from proofs if not provided)
     ///   - mintURL: The base URL of the mint
     /// - returns: SwapPreparation with prepared inputs and outputs
     public func prepareSwapToSend(
         availableProofs: [Proof],
         targetAmount: Int,
+        unit: String? = nil,
         at mintURL: String
     ) async throws -> SwapPreparation {
         // Get keyset information for fee calculation
@@ -241,8 +243,23 @@ public struct SwapService: Sendable {
         
         // Get active keyset for outputs
         let activeKeysets = try await keysetManagementService.getActiveKeysets(from: mintURL)
-        guard let activeKeyset = activeKeysets.first else {
-            throw CashuError.keysetInactive
+        
+        // Infer unit from proofs if not provided
+        let targetUnit = unit ?? inferUnitFromProofs(availableProofs, keysetInfo: keysetDict)
+        
+        // Filter by unit if available
+        let filteredKeysets = if let targetUnit = targetUnit {
+            activeKeysets.filter { $0.unit == targetUnit }
+        } else {
+            activeKeysets
+        }
+        
+        guard let activeKeyset = filteredKeysets.first else {
+            if targetUnit != nil {
+                throw CashuError.keysetInactive
+            } else {
+                throw CashuError.noActiveKeyset
+            }
         }
         
         // Create blinded messages
@@ -276,11 +293,13 @@ public struct SwapService: Sendable {
     /// - parameters:
     ///   - receivedProofs: Proofs received from another user
     ///   - preferredDenominations: Preferred output denominations (optional)
+    ///   - unit: Currency unit for the swap (optional, inferred from proofs if not provided)
     ///   - mintURL: The base URL of the mint
     /// - returns: SwapPreparation with prepared inputs and outputs
     public func prepareSwapToReceive(
         receivedProofs: [Proof],
         preferredDenominations: [Int]? = nil,
+        unit: String? = nil,
         at mintURL: String
     ) async throws -> SwapPreparation {
         // Get keyset information for fee calculation
@@ -302,8 +321,23 @@ public struct SwapService: Sendable {
         
         // Get active keyset for outputs
         let activeKeysets = try await keysetManagementService.getActiveKeysets(from: mintURL)
-        guard let activeKeyset = activeKeysets.first else {
-            throw CashuError.keysetInactive
+        
+        // Infer unit from proofs if not provided
+        let targetUnit = unit ?? inferUnitFromProofs(receivedProofs, keysetInfo: keysetDict)
+        
+        // Filter by unit if available
+        let filteredKeysets = if let targetUnit = targetUnit {
+            activeKeysets.filter { $0.unit == targetUnit }
+        } else {
+            activeKeysets
+        }
+        
+        guard let activeKeyset = filteredKeysets.first else {
+            if targetUnit != nil {
+                throw CashuError.keysetInactive
+            } else {
+                throw CashuError.noActiveKeyset
+            }
         }
         
         // Create blinded messages
@@ -479,6 +513,21 @@ public struct SwapService: Sendable {
         }
         
         return denominations.sorted() // Privacy-preserving order
+    }
+    
+    /// Infer unit from proofs using keyset information
+    private func inferUnitFromProofs(_ proofs: [Proof], keysetInfo: [String: KeysetInfo]) -> String? {
+        // Find the most common unit among the proofs
+        var unitCounts: [String: Int] = [:]
+        
+        for proof in proofs {
+            if let keysetInfo = keysetInfo[proof.id] {
+                unitCounts[keysetInfo.unit, default: 0] += 1
+            }
+        }
+        
+        // Return the most common unit
+        return unitCounts.max(by: { $0.value < $1.value })?.key
     }
     
     /// Normalize mint URL

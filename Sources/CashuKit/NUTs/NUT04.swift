@@ -372,8 +372,17 @@ public struct MintService: Sendable {
         
         let keyExchangeService = await KeyExchangeService()
         let activeKeysets = try await keyExchangeService.getActiveKeysets(from: mintURL)
-        guard let activeKeyset = activeKeysets.first(where: { $0.unit == unit }) else {
-            throw CashuError.keysetInactive
+        
+        // Filter keysets by unit
+        let unitKeysets = activeKeysets.filter { $0.unit == unit }
+        
+        guard let activeKeyset = unitKeysets.first else {
+            // Provide more specific error based on whether any keysets exist
+            if activeKeysets.isEmpty {
+                throw CashuError.noActiveKeyset
+            } else {
+                throw CashuError.keysetInactive
+            }
         }
         
         var blindedMessages: [BlindedMessage] = []
