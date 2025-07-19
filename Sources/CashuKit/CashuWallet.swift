@@ -421,10 +421,6 @@ public actor CashuWallet {
             throw CashuError.walletNotInitialized
         }
         
-        guard swapService != nil else {
-            throw CashuError.nutNotImplemented("NUT-03")
-        }
-        
         let allProofs = try await proofManager.getAvailableProofs()
         let currentDenominations = allProofs.denominationCounts
         let totalValue = allProofs.totalValue
@@ -493,8 +489,8 @@ public actor CashuWallet {
             throw CashuError.invalidAmount
         }
         
-        guard let mintService = mintService else {
-            throw CashuError.nutNotImplemented("NUT-04")
+        guard let mintService  else {
+            throw CashuError.mintUnavailable
         }
         
         // Use the existing high-level mint method
@@ -588,7 +584,7 @@ public actor CashuWallet {
             throw CashuError.walletNotInitialized
         }
         
-        guard let meltService = meltService else {
+        guard let meltService else {
             throw CashuError.nutNotImplemented("NUT-05")
         }
         

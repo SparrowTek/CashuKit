@@ -242,7 +242,7 @@ public struct SwapService: Sendable {
         // Get active keyset for outputs
         let activeKeysets = try await keysetManagementService.getActiveKeysets(from: mintURL)
         guard let activeKeyset = activeKeysets.first else {
-            throw CashuError.nutNotImplemented("No active keysets available")
+            throw CashuError.keysetInactive
         }
         
         // Create blinded messages
@@ -303,7 +303,7 @@ public struct SwapService: Sendable {
         // Get active keyset for outputs
         let activeKeysets = try await keysetManagementService.getActiveKeysets(from: mintURL)
         guard let activeKeyset = activeKeysets.first else {
-            throw CashuError.nutNotImplemented("No active keysets available")
+            throw CashuError.keysetInactive
         }
         
         // Create blinded messages

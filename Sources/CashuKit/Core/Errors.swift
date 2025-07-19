@@ -45,7 +45,6 @@ public enum CashuError: Error, Sendable {
     case validationFailed
     
     // NUT-specific errors
-    case nutNotImplemented(String)
     case invalidNutVersion(String)
     case invalidKeysetID
     
@@ -167,7 +166,7 @@ extension CashuError {
         case .storageError:
             return .storage
             
-        case .nutNotImplemented, .invalidNutVersion, .invalidKeysetID, .insufficientFunds,
+        case .invalidNutVersion, .invalidKeysetID, .insufficientFunds,
              .syncRequired, .operationTimeout, .operationCancelled, .invalidMintConfiguration,
              .keysetNotFound, .keysetExpired, .unsupportedOperation, .concurrencyError,
              .unsupportedVersion, .invalidMnemonic, .invalidSecret,
@@ -261,8 +260,6 @@ extension CashuError: LocalizedError {
             return "Validation failed"
             
         // NUT-specific errors
-        case .nutNotImplemented(let nut):
-            return "NUT \(nut) not implemented"
         case .invalidNutVersion(let version):
             return "Invalid NUT version: \(version)"
         case .invalidKeysetID:
