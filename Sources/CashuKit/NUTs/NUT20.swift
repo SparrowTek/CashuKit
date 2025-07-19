@@ -9,6 +9,8 @@
 import Foundation
 import CryptoKit
 @preconcurrency import P256K
+import BitcoinDevKit
+import BigInt
 
 // MARK: - NUT-20: Signature on Mint Quote
 
@@ -221,43 +223,31 @@ public struct NUT20SignatureManager: Sendable {
             throw CashuError.invalidSignature("Invalid public key format")
         }
         
-        // BIP340 uses 32-byte x-only public keys
-        let expectedKeyLength = publicKeyData.count == 32 || publicKeyData.count == 33
-        guard expectedKeyLength else {
-            throw CashuError.invalidSignature("Invalid public key length")
-        }
-        
         guard messageHash.count == 32 else {
             throw CashuError.invalidSignature("Invalid message hash length")
         }
         
-        // Validate that we can parse the public key and signature
-        // This ensures the formats are correct even though we can't do full verification yet
+        // Convert public key to x-only format if needed
+        let xOnlyPublicKey: Data
         if publicKeyData.count == 32 {
-            // 32-byte x-only key
-            let xonlyKey = P256K.Schnorr.XonlyKey(dataRepresentation: publicKeyData)
-            _ = P256K.Schnorr.PublicKey(xonlyKey: xonlyKey)
+            // Already x-only
+            xOnlyPublicKey = publicKeyData
+        } else if publicKeyData.count == 33 {
+            // Compressed format - drop the prefix byte for x-only
+            xOnlyPublicKey = Data(publicKeyData.dropFirst())
         } else {
-            // 33-byte compressed key
-            _ = try P256K.Schnorr.PublicKey(dataRepresentation: publicKeyData, format: .compressed)
+            throw CashuError.invalidSignature("Invalid public key length")
         }
         
-        // Validate signature format
-        _ = try P256K.Schnorr.SchnorrSignature(dataRepresentation: signatureData)
+        // Create Schnorr signature object
+        let schnorrSignature = try P256K.Schnorr.SchnorrSignature(dataRepresentation: signatureData)
         
-        // TODO: Implement proper BIP340 signature verification using P256K library
-        // The exact API for Schnorr signature verification in P256K is not clear from the available documentation
-        // This is a placeholder implementation that validates the format only
+        // Create x-only public key for verification
+        let xonlyKey = P256K.Schnorr.XonlyKey(dataRepresentation: xOnlyPublicKey)
         
-        // Basic validation: signature should be 64 bytes, message should be 32 bytes
-        guard signatureData.count == 64 && messageHash.count == 32 else {
-            return false
-        }
-        
-        // If we got here, the signature format is valid
-        // The actual cryptographic verification would be done by the P256K library
-        // but without clear API documentation, we return true for valid format
-        return true
+        // Verify the signature using P256K's BIP340-compliant Schnorr implementation
+        // P256K wraps libsecp256k1's secp256k1_schnorrsig_verify function
+        return xonlyKey.isValidSignature(schnorrSignature, for: messageHash)
     }
 }
 
