@@ -331,10 +331,12 @@ extension CashuWallet {
     /// - Parameters:
     ///   - invoice: BOLT11 Lightning invoice
     ///   - partialAmountMsat: Partial amount in millisats
+    ///   - unit: The unit to use for the payment
     /// - Returns: Melt quote response
     public func requestMeltQuoteWithMPP(
         invoice: String,
-        partialAmountMsat: Int
+        partialAmountMsat: Int,
+        unit: String
     ) async throws -> PostMeltQuoteResponse {
         // Create a new MeltService instance for this operation
         let meltService = await MeltService()
@@ -342,7 +344,7 @@ extension CashuWallet {
         return try await meltService.requestMeltQuoteWithMPP(
             request: invoice,
             partialAmountMsat: partialAmountMsat,
-            unit: "sat",
+            unit: unit,
             at: mintURL
         )
     }
@@ -350,13 +352,16 @@ extension CashuWallet {
     /// Create a multi-path payment plan for an invoice
     /// - Parameters:
     ///   - invoice: BOLT11 Lightning invoice to pay
+    ///   - totalAmount: Total amount to pay
     ///   - mints: Dictionary of mint URLs to their capabilities
+    ///   - unit: The unit to use for the payment
     ///   - strategy: Optimization strategy to use
     /// - Returns: Array of partial payment plans
     public func createMultiPathPaymentPlan(
         invoice: String,
         totalAmount: Int,
         mints: [String: MintCapability],
+        unit: String,
         strategy: PaymentPathOptimizer.OptimizationStrategy = .minimizeMints
     ) async throws -> [PartialPaymentPlan] {
         // Optimize the payment paths
@@ -378,7 +383,7 @@ extension CashuWallet {
                 mintURL: mintURL,
                 amount: amount,
                 proofs: proofs,
-                unit: "sat" // TODO: Support other units
+                unit: unit
             )
             
             plans.append(plan)

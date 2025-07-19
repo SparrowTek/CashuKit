@@ -52,7 +52,8 @@ struct MPPIntegrationTests {
         do {
             _ = try await wallet.requestMeltQuoteWithMPP(
                 invoice: "lnbc100n1p3ehk5pp5xgxzcks5jtpj9xw7ugeheyt6ccnz4fkjp03",
-                partialAmountMsat: 50000
+                partialAmountMsat: 50000,
+                unit: "sat"
             )
             #expect(Bool(false), "Should have thrown an error with test URL")
         } catch {

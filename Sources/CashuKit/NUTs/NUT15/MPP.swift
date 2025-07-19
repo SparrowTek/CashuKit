@@ -355,20 +355,33 @@ public struct PaymentPathOptimizer {
         var remaining = amount
         var allocations: [String: Int] = [:]
         
-        // Sort by available balance (descending)
-        let sorted = mints.sorted { $0.value.availableBalance > $1.value.availableBalance }
+        // Filter mints based on constraints first
+        var eligibleMints = mints
+        
+        if let constraints = constraints {
+            // Filter by reliability score
+            if let minReliability = constraints.minReliabilityScore {
+                eligibleMints = eligibleMints.filter { $0.value.reliabilityScore >= minReliability }
+            }
+            
+            // Filter excluded mints
+            if let excluded = constraints.excludedMints {
+                eligibleMints = eligibleMints.filter { !excluded.contains($0.key) }
+            }
+        }
+        
+        // Sort by available balance (descending) to minimize number of mints
+        // When balances are equal, sort by reliability score (descending) as secondary criteria
+        let sorted = eligibleMints.sorted { 
+            if $0.value.availableBalance != $1.value.availableBalance {
+                return $0.value.availableBalance > $1.value.availableBalance
+            }
+            // Secondary sort by reliability when balances are equal
+            return $0.value.reliabilityScore > $1.value.reliabilityScore
+        }
         
         for (mintURL, capability) in sorted {
             guard remaining > 0 else { break }
-            
-            // Check constraints
-            if let constraints = constraints {
-                if let minReliability = constraints.minReliabilityScore {
-                    if capability.reliabilityScore < minReliability {
-                        continue
-                    }
-                }
-            }
             
             var allocation = min(capability.availableBalance, remaining)
             
@@ -380,6 +393,14 @@ public struct PaymentPathOptimizer {
             if allocation > 0 {
                 allocations[mintURL] = allocation
                 remaining -= allocation
+            }
+            
+            // Check if we've reached max mints constraint
+            if let constraints = constraints, let maxMints = constraints.maxMints {
+                if allocations.count >= maxMints && remaining > 0 {
+                    // Try to fit remaining amount in existing allocations
+                    break
+                }
             }
         }
         
