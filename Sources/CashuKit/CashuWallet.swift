@@ -1331,7 +1331,7 @@ public actor CashuWallet {
     /// Placeholder for future implementation
     private func rollbackSpentProofs(_ proofs: [Proof]) async throws {
         // This would be implemented in ProofManager
-        print("Warning: Need to implement rollback for proofs")
+        logger.warning("Need to implement rollback for proofs", category: .wallet)
     }
     
     /// Execute operation with timeout
