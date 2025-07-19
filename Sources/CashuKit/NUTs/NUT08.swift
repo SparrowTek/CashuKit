@@ -229,8 +229,12 @@ public struct BlankOutputGenerator {
             )
             
             // Unblind the signature
+            guard let blindedSignatureData = Data(hexString: signature.C_) else {
+                throw CashuError.invalidHexString
+            }
+            
             let unblindedToken = try Wallet.unblindSignature(
-                blindedSignature: Data(hexString: signature.C_)!,
+                blindedSignature: blindedSignatureData,
                 blindingData: blankOutput.blindingData,
                 mintPublicKey: mintPublicKey
             )
@@ -320,7 +324,7 @@ public struct PostMeltRequestWithFeeReturn: CashuCodabale {
     
     /// Whether this request supports fee return
     public var supportsFeeReturn: Bool {
-        return outputs != nil && !outputs!.isEmpty
+        return !(outputs ?? []).isEmpty
     }
 }
 

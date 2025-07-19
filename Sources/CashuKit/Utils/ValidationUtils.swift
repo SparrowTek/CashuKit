@@ -150,11 +150,15 @@ public struct ValidationUtils: Sendable {
         }
         
         let hexPattern = "^[0-9A-Fa-f]+$"
-        let regex = try! NSRegularExpression(pattern: hexPattern)
-        let range = NSRange(location: 0, length: hexString.count)
-        
-        if regex.firstMatch(in: hexString, options: [], range: range) == nil {
-            errors.append("Invalid hex string format")
+        do {
+            let regex = try NSRegularExpression(pattern: hexPattern)
+            let range = NSRange(location: 0, length: hexString.count)
+            
+            if regex.firstMatch(in: hexString, options: [], range: range) == nil {
+                errors.append("Invalid hex string format")
+            }
+        } catch {
+            errors.append("Failed to validate hex string format")
         }
         
         // Check even length (for proper byte representation)

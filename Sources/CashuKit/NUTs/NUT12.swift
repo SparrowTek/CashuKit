@@ -332,7 +332,10 @@ public func verifyDLEQProofCarol(
 public func generateSecureRandomScalar() throws -> Data {
     var randomBytes = Data(count: 32)
     let result = randomBytes.withUnsafeMutableBytes { bytes in
-        SecRandomCopyBytes(kSecRandomDefault, 32, bytes.bindMemory(to: UInt8.self).baseAddress!)
+        guard let baseAddress = bytes.bindMemory(to: UInt8.self).baseAddress else {
+            return errSecParam
+        }
+        return SecRandomCopyBytes(kSecRandomDefault, 32, baseAddress)
     }
     
     guard result == errSecSuccess else {

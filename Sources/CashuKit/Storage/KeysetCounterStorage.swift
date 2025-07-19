@@ -128,7 +128,8 @@ public final class FileKeysetCounterStorage: KeysetCounterStorage, Sendable {
     }
     
     private static func defaultDirectory() -> URL {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first 
+            ?? FileManager.default.temporaryDirectory
         return documentsPath.appendingPathComponent("CashuKit", isDirectory: true)
     }
     

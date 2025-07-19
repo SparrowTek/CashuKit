@@ -559,8 +559,8 @@ public struct NUT20SignatureValidator: Sendable {
         
         // If it's a 33-byte compressed key, validate the prefix
         if publicKeyData.count == 33 {
-            let prefix = publicKeyData.first!
-            guard prefix == 0x02 || prefix == 0x03 else {
+            guard let prefix = publicKeyData.first,
+                  prefix == 0x02 || prefix == 0x03 else {
                 throw CashuError.invalidPublicKey("Invalid public key prefix")
             }
         }

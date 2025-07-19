@@ -353,7 +353,9 @@ public struct JWTPayload: Codable, Sendable {
         if let additionalClaims = additionalClaims {
             var additionalContainer = encoder.container(keyedBy: AnyCodingKey.self)
             for (key, value) in additionalClaims {
-                try additionalContainer.encode(value, forKey: AnyCodingKey(stringValue: key)!)
+                if let codingKey = AnyCodingKey(stringValue: key) {
+                    try additionalContainer.encode(value, forKey: codingKey)
+                }
             }
         }
     }

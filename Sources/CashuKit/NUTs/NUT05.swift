@@ -116,7 +116,7 @@ public struct PostMeltQuoteResponse: CashuCodabale {
     
     /// Whether this quote supports fee return (NUT-08)
     public var supportsFeeReturn: Bool {
-        return feeReserve != nil && feeReserve! > 0
+        return (feeReserve ?? 0) > 0
     }
     
     /// Recommended number of blank outputs for fee return (NUT-08)
@@ -182,7 +182,7 @@ public struct PostMeltRequest: CashuCodabale {
     
     /// Whether this request supports fee return (NUT-08)
     public var supportsFeeReturn: Bool {
-        return outputs != nil && !outputs!.isEmpty
+        return !(outputs ?? []).isEmpty
     }
 }
 
@@ -219,7 +219,7 @@ public struct PostMeltResponse: CashuCodabale {
     
     /// Whether fees were returned (NUT-08)
     public var hasFeesReturned: Bool {
-        return change != nil && !change!.isEmpty
+        return !(change ?? []).isEmpty
     }
     
     /// Number of change signatures returned (NUT-08)

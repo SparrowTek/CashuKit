@@ -131,11 +131,15 @@ public struct NUTValidation: Sendable {
         
         // Must be valid hex
         let hexPattern = "^[0-9A-Fa-f]{16}$"
-        let regex = try! NSRegularExpression(pattern: hexPattern)
-        let range = NSRange(location: 0, length: keysetID.count)
-        
-        if regex.firstMatch(in: keysetID, options: [], range: range) == nil {
-            errors.append("Keyset ID must be valid hexadecimal")
+        do {
+            let regex = try NSRegularExpression(pattern: hexPattern)
+            let range = NSRange(location: 0, length: keysetID.count)
+            
+            if regex.firstMatch(in: keysetID, options: [], range: range) == nil {
+                errors.append("Keyset ID must be valid hexadecimal")
+            }
+        } catch {
+            errors.append("Failed to validate keyset ID format")
         }
         
         // Must start with version byte 00

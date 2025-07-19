@@ -262,22 +262,28 @@ public struct WalletRestoration: Sendable {
 
 // Create seed from mnemonic following BIP39 standard
 private func createSeedFromMnemonic(mnemonic: String, passphrase: String) -> Data {
-    let mnemonic = mnemonic.data(using: .utf8)!
-    let salt = "mnemonic\(passphrase)".data(using: .utf8)!
+    let mnemonicData = mnemonic.data(using: .utf8) ?? Data()
+    let salt = "mnemonic\(passphrase)".data(using: .utf8) ?? Data()
     
     // BIP39 specifies PBKDF2 with HMAC-SHA512, 2048 iterations
     var seed = Data(count: 64)
     _ = seed.withUnsafeMutableBytes { seedBytes in
         salt.withUnsafeBytes { saltBytes in
-            mnemonic.withUnsafeBytes { mnemonicBytes in
-                CCKeyDerivationPBKDF(
+            mnemonicData.withUnsafeBytes { mnemonicBytes in
+                guard let seedBase = seedBytes.bindMemory(to: UInt8.self).baseAddress,
+                      let saltBase = saltBytes.bindMemory(to: UInt8.self).baseAddress,
+                      let mnemonicBase = mnemonicBytes.bindMemory(to: Int8.self).baseAddress else {
+                    return Int(kCCParamError)
+                }
+                
+                return Int(CCKeyDerivationPBKDF(
                     CCPBKDFAlgorithm(kCCPBKDF2),
-                    mnemonicBytes.bindMemory(to: Int8.self).baseAddress!, mnemonic.count,
-                    saltBytes.bindMemory(to: UInt8.self).baseAddress!, salt.count,
+                    mnemonicBase, mnemonicData.count,
+                    saltBase, salt.count,
                     CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA512),
                     2048,
-                    seedBytes.bindMemory(to: UInt8.self).baseAddress!, 64
-                )
+                    seedBase, 64
+                ))
             }
         }
     }
@@ -285,7 +291,8 @@ private func createSeedFromMnemonic(mnemonic: String, passphrase: String) -> Dat
 }
 
 private func createMasterKeyFromSeed(seed: Data) -> Data {
-    let hmac = HMAC.sha512(key: "Bitcoin seed".data(using: .utf8)!, data: seed)
+    let key = "Bitcoin seed".data(using: .utf8) ?? Data()
+    let hmac = HMAC.sha512(key: key, data: seed)
     return hmac
 }
 
@@ -405,7 +412,10 @@ extension Data {
     static func random(count: Int) -> Data {
         var data = Data(count: count)
         _ = data.withUnsafeMutableBytes { bytes in
-            SecRandomCopyBytes(kSecRandomDefault, count, bytes.baseAddress!)
+            guard let baseAddress = bytes.baseAddress else {
+                return errSecParam
+            }
+            return SecRandomCopyBytes(kSecRandomDefault, count, baseAddress)
         }
         return data
     }
