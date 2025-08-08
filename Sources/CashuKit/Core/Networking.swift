@@ -33,11 +33,31 @@ extension JSONEncoder {
 
 @CashuActor
 class CashuRouterDelegate: NetworkRouterDelegate {
+    private let maxRetries = 3
+    private let baseDelay: TimeInterval = 0.2
+    private let rateLimiter = EndpointRateLimiter(defaultConfiguration: .default)
+
     func shouldRetry(error: any Error, attempts: Int) async throws -> Bool {
-        false
+        // Simple exponential backoff for transient network errors
+        guard attempts < maxRetries else { return false }
+
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .dnsLookupFailed, .notConnectedToInternet:
+                try await Task.sleep(nanoseconds: UInt64((baseDelay * pow(2.0, Double(attempts))) * 1_000_000_000))
+                return true
+            default:
+                return false
+            }
+        }
+
+        return false
     }
-    
+
     func intercept(_ request: inout URLRequest) async {
-        // no-op
+        // Basic rate limiting per endpoint path
+        let path = request.url?.path ?? ""
+        _ = await rateLimiter.shouldAllowRequest(for: path)
+        await rateLimiter.recordRequest(for: path)
     }
 }

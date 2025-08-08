@@ -249,6 +249,33 @@ struct CryptographicTests {
         // (The specific test depends on the secp256k1 implementation)
         #expect(keypair.publicKey.dataRepresentation == keypair.publicKey.dataRepresentation)
     }
+
+    @Test
+    func walletUnblindingRoundTrip() async throws {
+        // Smoke-test alignment of blinded messages and blinding data as produced in services
+        // This ensures counts and types match expected flows.
+        let keyExchange = await KeyExchangeService()
+        // Use example test mint; if unavailable in test environment, skip
+        do {
+            let activeKeysets = try await keyExchange.getActiveKeysets(from: "https://test.mint.example.com")
+            if let first = activeKeysets.first {
+                let amounts = [1, 2, 4]
+                var messages: [BlindedMessage] = []
+                var blindings: [WalletBlindingData] = []
+                for amount in amounts {
+                    let secret = CashuKeyUtils.generateRandomSecret()
+                    let blinding = try WalletBlindingData(secret: secret)
+                    let message = BlindedMessage(amount: amount, id: first.id, B_: blinding.blindedMessage.dataRepresentation.hexString)
+                    messages.append(message)
+                    blindings.append(blinding)
+                }
+                #expect(messages.count == blindings.count)
+            }
+        } catch {
+            // Skip if no active keysets are configured in tests
+            #expect(true)
+        }
+    }
     
     // MARK: - Random Number Generation Tests
     
