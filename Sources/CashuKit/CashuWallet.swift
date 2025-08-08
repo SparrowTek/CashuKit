@@ -1305,14 +1305,18 @@ public actor CashuWallet {
         }
     }
     
-    /// Generate blinded outputs for a given amount
+    /// Generate blinded outputs for a given amount (messages only)
     private func generateBlindedOutputs(amount: Int) async throws -> [BlindedMessage] {
+        let (messages, _) = try await generateBlindedOutputsWithBlindingData(amount: amount)
+        return messages
+    }
+
+    /// Generate blinded outputs for a given amount, returning messages and their corresponding blinding data
+    private func generateBlindedOutputsWithBlindingData(amount: Int) async throws -> ([BlindedMessage], [WalletBlindingData]) {
         // Create optimal denominations (powers of 2)
         let outputAmounts = createOptimalDenominations(for: amount)
-        
+
         // Get active keyset
-        // Key exchange service is always available since it's initialized in setupServices()
-        
         guard let keyExchangeService = keyExchangeService else {
             throw CashuError.walletNotInitialized
         }
@@ -1320,10 +1324,11 @@ public actor CashuWallet {
         guard let activeKeyset = activeKeysets.first(where: { $0.unit == configuration.unit }) else {
             throw CashuError.keysetInactive
         }
-        
-        // Generate blinded messages
+
+        // Generate blinded messages and capture blinding data for later unblinding
         var blindedMessages: [BlindedMessage] = []
-        
+        var blindingData: [WalletBlindingData] = []
+
         for outputAmount in outputAmounts {
             let secret = CashuKeyUtils.generateRandomSecret()
             let walletBlindingData = try WalletBlindingData(secret: secret)
@@ -1332,15 +1337,16 @@ public actor CashuWallet {
                 id: activeKeyset.id,
                 B_: walletBlindingData.blindedMessage.dataRepresentation.hexString
             )
-            
+
             blindedMessages.append(blindedMessage)
+            blindingData.append(walletBlindingData)
         }
-        
-        return blindedMessages
+
+        return (blindedMessages, blindingData)
     }
     
-    /// Unblind signatures received from the mint
-    private func unblindSignatures(signatures: [BlindSignature], amount: Int) async throws -> [Proof] {
+    /// Unblind signatures received from the mint using corresponding blinding data
+    private func unblindSignatures(signatures: [BlindSignature], blindingData: [WalletBlindingData]) async throws -> [Proof] {
         // Get mint keys
         // Key exchange service is always available since it's initialized in setupServices()
         
@@ -1359,32 +1365,40 @@ public actor CashuWallet {
             }
         })
         
+        guard signatures.count == blindingData.count else {
+            throw CashuError.invalidResponse
+        }
+
         var newProofs: [Proof] = []
-        
-        // For each signature, we need the corresponding blinding data
-        // In a real implementation, this would be stored when generating blinded outputs
-        // For now, we'll generate proofs directly from the signatures
-        for signature in signatures {
+
+        for (index, signature) in signatures.enumerated() {
+            let blinding = blindingData[index]
             let mintKeyKey = "\(signature.id)_\(signature.amount)"
-            
+
             guard let mintPublicKey = mintKeys[mintKeyKey] else {
                 throw CashuError.invalidSignature("Mint public key not found for amount \(signature.amount)")
             }
-            
-            // In a complete implementation, we would:
-            // 1. Retrieve the stored WalletBlindingData for this signature
-            // 2. Use Wallet.unblindSignature() to unblind
-            // For now, create a proof with the blinded signature as-is
+
+            guard let blindedSignatureData = Data(hexString: signature.C_) else {
+                throw CashuError.invalidHexString
+            }
+
+            let unblindedToken = try Wallet.unblindSignature(
+                blindedSignature: blindedSignatureData,
+                blindingData: blinding,
+                mintPublicKey: mintPublicKey
+            )
+
             let proof = Proof(
                 amount: signature.amount,
                 id: signature.id,
-                secret: CashuKeyUtils.generateRandomSecret(), // Would use original secret in real impl
-                C: signature.C_
+                secret: unblindedToken.secret,
+                C: unblindedToken.signature.hexString
             )
-            
+
             newProofs.append(proof)
         }
-        
+
         return newProofs
     }
     

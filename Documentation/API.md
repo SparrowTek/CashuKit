@@ -12,7 +12,7 @@ Add CashuKit to your project using Swift Package Manager:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/your-repo/CashuKit", from: "1.0.0")
+    .package(url: "https://github.com/SparrowTek/CashuKit", from: "0.1.0")
 ]
 ```
 
@@ -21,23 +21,19 @@ dependencies: [
 ```swift
 import CashuKit
 
-// Create a wallet
-let wallet = await CashuKit.createWallet(mintURL: "https://mint.example.com")
-
-// Initialize the wallet
+// Create a wallet and initialize
+let wallet = await CashuKit.createWallet(mintURL: "https://testnut.cashu.space")
 try await wallet.initialize()
 
-// Check balance
+// Query balance
 let balance = try await wallet.balance
-print("Current balance: \(balance) sats")
+print("Balance: \(balance)")
 
-// Mint tokens
+// Mint tokens (BOLT11)
 let mintResult = try await wallet.mint(amount: 1000, paymentRequest: "lnbc...")
 
-// Send tokens
+// Send and receive
 let token = try await wallet.send(amount: 500, memo: "Payment for coffee")
-
-// Receive tokens
 let receivedProofs = try await wallet.receive(token: token)
 ```
 

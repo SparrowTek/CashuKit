@@ -113,13 +113,16 @@ let wallet = await CashuWallet(configuration: config)
 try await wallet.initialize()
 
 // Check balance
-let balance = await wallet.getTotalBalance()
+let balance = try await wallet.balance
 print("Current balance: \(balance) sats")
 
-// Mint tokens from Lightning invoice
-let mintQuote = try await wallet.requestMintQuote(amount: 1000)
-// Pay the Lightning invoice...
-let proofs = try await wallet.mint(quoteID: mintQuote.quote)
+// Mint tokens using a Lightning invoice (BOLT11)
+let mintResult = try await wallet.mint(
+    amount: 1000,
+    paymentRequest: "lnbc...",
+    method: "bolt11"
+)
+// New proofs are available in mintResult.newProofs
 
 // Send tokens
 let token = try await wallet.send(amount: 500, memo: "Payment for coffee")
@@ -127,12 +130,11 @@ let token = try await wallet.send(amount: 500, memo: "Payment for coffee")
 // Receive tokens
 let receivedProofs = try await wallet.receive(token: token)
 
-// Melt tokens via Lightning
-let meltQuote = try await wallet.requestMeltQuote(
+// Melt tokens via Lightning (pay a BOLT11 invoice)
+let meltResult = try await wallet.melt(
     paymentRequest: "lnbc5u1p3...",
-    amount: 500
+    method: "bolt11"
 )
-let meltResult = try await wallet.melt(quote: meltQuote)
 ```
 
 ## Advanced Features
@@ -156,60 +158,25 @@ let restoredWallet = try await CashuWallet(
 
 ### Spending Conditions (NUT-10/11)
 
-```swift
-// Create P2PK-locked token
-let publicKey = try P256K.KeyAgreement.PrivateKey().publicKey
-let p2pkToken = try await wallet.send(
-    amount: 1000,
-    conditions: .p2pk(publicKey: publicKey)
-)
-
-// Receive P2PK token with signature
-let signature = try wallet.createP2PKSignature(
-    privateKey: privateKey,
-    proofs: p2pkToken.token[0].proofs
-)
-let proofs = try await wallet.receive(
-    token: p2pkToken,
-    p2pkSignatures: [signature]
-)
-```
+Support exists in lower-level services and models; high-level wallet helpers are under development. Refer to NUT-10/11 modules and tests for current usage patterns.
 
 ### HTLC Support (NUT-14)
 
-```swift
-// Create HTLC-locked token
-let htlcSecret = "mySecret"
-let htlcToken = try await wallet.send(
-    amount: 500,
-    conditions: .htlc(
-        hashlock: SHA256.hash(data: htlcSecret.data(using: .utf8)!),
-        locktime: Date().timeIntervalSince1970 + 3600 // 1 hour
-    )
-)
-
-// Claim HTLC token
-let htlcProofs = try await wallet.receive(
-    token: htlcToken,
-    htlcPreimages: [htlcSecret]
-)
-```
+HTLC primitives are implemented in the model layer. High-level wallet flows are planned; see NUT-14 tests for examples.
 
 ### Token State Management (NUT-07)
 
 ```swift
 // Check proof states
-let states = try await wallet.checkProofStates(proofs: myProofs)
-for state in states {
-    print("Proof \(state.Y): \(state.state)")
+let batch = try await wallet.checkProofStates(myProofs)
+for result in batch.results {
+    print("Proof \(try result.proof.calculateY()): \(result.stateInfo.state)")
 }
 
-// Restore proofs from deterministic backup
-let restoredProofs = try await wallet.restore(
-    keysetIDs: ["009a1f293253e41e"],
-    startCounter: 0,
-    maxCounter: 1000
-)
+// Restore from seed (NUT-13)
+let restoredBalance = try await wallet.restoreFromSeed(batchSize: 100) { progress in
+    // handle progress updates
+}
 ```
 
 ## Security Considerations
