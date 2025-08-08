@@ -31,6 +31,11 @@ public protocol ProofStorage: Sendable {
     
     /// Get total count of proofs
     func count() async throws -> Int
+
+    // Transactional lifecycle (optional for durable stores; in-memory no-op acceptable)
+    func markAsPendingSpent(_ proofs: [Proof]) async throws
+    func finalizePendingSpent(_ proofs: [Proof]) async throws
+    func rollbackPendingSpent(_ proofs: [Proof]) async throws
 }
 
 // MARK: - In-Memory Proof Storage
@@ -40,6 +45,7 @@ public protocol ProofStorage: Sendable {
 @CashuActor
 public final class InMemoryProofStorage: ProofStorage, Sendable {
     private var proofs: Set<ProofWrapper> = []
+    private var pendingSpent: Set<ProofWrapper> = []
     
     public nonisolated init() {}
     
@@ -73,6 +79,22 @@ public final class InMemoryProofStorage: ProofStorage, Sendable {
     
     public func count() async throws -> Int {
         return proofs.count
+    }
+
+    // MARK: - Transactional lifecycle
+    public func markAsPendingSpent(_ proofs: [Proof]) async throws {
+        pendingSpent.formUnion(proofs.map(ProofWrapper.init))
+    }
+
+    public func finalizePendingSpent(_ proofs: [Proof]) async throws {
+        let wrappers = Set(proofs.map(ProofWrapper.init))
+        pendingSpent.subtract(wrappers)
+        // In in-memory storage, spent vs unspent is coordinated by ProofManager; nothing else to do here
+    }
+
+    public func rollbackPendingSpent(_ proofs: [Proof]) async throws {
+        let wrappers = Set(proofs.map(ProofWrapper.init))
+        pendingSpent.subtract(wrappers)
     }
 }
 
@@ -148,6 +170,17 @@ public final class ProofManager: Sendable {
     public func markAsSpent(_ proofs: [Proof]) async throws {
         let wrappers = proofs.map(ProofWrapper.init)
         spentProofs.formUnion(wrappers)
+    }
+
+    // Transactional lifecycle helpers
+    public func markAsPendingSpent(_ proofs: [Proof]) async throws {
+        try await storage.markAsPendingSpent(proofs)
+    }
+    public func finalizePendingSpent(_ proofs: [Proof]) async throws {
+        try await storage.finalizePendingSpent(proofs)
+    }
+    public func rollbackPendingSpent(_ proofs: [Proof]) async throws {
+        try await storage.rollbackPendingSpent(proofs)
     }
     
     /// Remove proofs from storage (after successful spending)

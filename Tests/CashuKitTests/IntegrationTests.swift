@@ -114,10 +114,18 @@ struct IntegrationTests {
         let remainingBalance = try await proofManager.getTotalBalance()
         #expect(remainingBalance == 14) // 15 - 1
         
-        // Test proof removal
+        // Transactional lifecycle: pending -> rollback -> finalize
+        try await proofManager.markAsPendingSpent([proofs[1]])
+        try await proofManager.rollbackPendingSpent([proofs[1]])
+        let afterRollbackSelection = try await proofManager.selectProofs(amount: 2)
+        #expect(afterRollbackSelection.reduce(0) { $0 + $1.amount } >= 2)
+        try await proofManager.markAsPendingSpent([proofs[1]])
+        try await proofManager.finalizePendingSpent([proofs[1]])
+        
+        // Test proof removal (cleanup)
         try await proofManager.removeProofs([proofs[0]])
         let finalBalance = try await proofManager.getTotalBalance()
-        #expect(finalBalance == 14) // Still 14 because proof was already marked as spent
+        #expect(finalBalance == 14)
     }
     
     // MARK: - Multi-Keyset Token Tests
