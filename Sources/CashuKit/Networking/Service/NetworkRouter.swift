@@ -8,6 +8,9 @@ import FoundationNetworking
 protocol NetworkRouterDelegate: AnyObject {
     func intercept(_ request: inout URLRequest) async
     func shouldRetry(error: any Error, attempts: Int) async throws -> Bool
+    // Circuit breaker hooks
+    func breakerRecordSuccess(forKey key: String) async
+    func breakerRecordFailure(forKey key: String) async
 }
 
 /// Describes the implementation details of a NetworkRouter
@@ -28,6 +31,7 @@ public enum NetworkError : Error, Sendable {
     case noStatusCode
     case noData
     case tokenRefresh
+    case circuitOpen
 }
 
 typealias HTTPHeaders = [String:String]
@@ -63,17 +67,58 @@ internal class NetworkRouter<Endpoint: EndpointType>: NetworkRouterProtocol {
     /// - Returns: The generic type is returned
     func execute<T: CashuDecodable>(_ route: Endpoint) async throws -> T {
         guard var request = try? await buildRequest(from: route) else { throw NetworkError.encodingFailed }
-        await delegate?.intercept(&request)
-        
-        let (data, response) = try await networking.data(for: request, delegate: urlSessionTaskDelegate)
-        guard let httpResponse = response as? HTTPURLResponse else { throw NetworkError.noStatusCode }
-        switch httpResponse.statusCode {
-        case 200...299:
-            return try decoder.decode(T.self, from: data)
-        default:
-            let statusCode = StatusCode(rawValue: httpResponse.statusCode)
-            throw NetworkError.statusCode(statusCode, data: data)
+
+        // Attempt loop with delegate retry and circuit breaker feedback
+        var attempts = 0
+        var lastError: (any Error)?
+        while attempts <= 5 { // hard max attempts
+            attempts += 1
+            await delegate?.intercept(&request)
+            // If circuit breaker denied, short-circuit
+            if request.value(forHTTPHeaderField: "X-Cashu-CB-Denied") == "1" {
+                lastError = NetworkError.circuitOpen
+                // Do not retry when breaker is open
+                throw NetworkError.circuitOpen
+            }
+            do {
+                let (data, response) = try await networking.data(for: request, delegate: urlSessionTaskDelegate)
+                guard let httpResponse = response as? HTTPURLResponse else { throw NetworkError.noStatusCode }
+                switch httpResponse.statusCode {
+                case 200...299:
+                    // Success path
+                    if let url = request.url {
+                        let key = url.host.map { $0 + url.path } ?? url.absoluteString
+                        await delegate?.breakerRecordSuccess(forKey: key)
+                    }
+                    return try decoder.decode(T.self, from: data)
+                default:
+                    // HTTP error
+                    let statusCode = StatusCode(rawValue: httpResponse.statusCode)
+                    let error = NetworkError.statusCode(statusCode, data: data)
+                    lastError = error
+                    if let url = request.url {
+                        let key = url.host.map { $0 + url.path } ?? url.absoluteString
+                        await delegate?.breakerRecordFailure(forKey: key)
+                    }
+                    let shouldRetry = try await delegate?.shouldRetry(error: error, attempts: attempts) ?? false
+                    if !shouldRetry { throw error }
+                }
+            } catch {
+                lastError = error
+                if let url = request.url {
+                    let key = url.host.map { $0 + url.path } ?? url.absoluteString
+                    await delegate?.breakerRecordFailure(forKey: key)
+                }
+                let shouldRetry = try await delegate?.shouldRetry(error: error, attempts: attempts) ?? false
+                if !shouldRetry { throw error }
+            }
         }
+        throw lastError ?? NetworkError.noData
+    }
+
+    // Convenience isolated setter for tests/consumers
+    func setDelegate(_ delegate: (any NetworkRouterDelegate)?) {
+        self.delegate = delegate
     }
     
     func buildRequest(from route: Endpoint) async throws -> URLRequest {

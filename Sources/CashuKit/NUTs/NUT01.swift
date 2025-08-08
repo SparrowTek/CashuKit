@@ -105,7 +105,7 @@ public struct KeyExchangeService: Sendable {
     /// - parameter mintURL: The base URL of the mint
     /// - returns: GetKeysResponse with active keysets and their keys
     public func getKeys(from mintURL: String) async throws -> GetKeysResponse {
-        let normalizedURL = try normalizeMintURL(mintURL)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         return try await router.execute(.getKeys)
@@ -117,7 +117,7 @@ public struct KeyExchangeService: Sendable {
     ///   - keysetID: The ID of the keyset to fetch
     /// - returns: GetKeysResponse with the requested keyset
     public func getKeys(from mintURL: String, keysetID: String) async throws -> GetKeysResponse {
-        let normalizedURL = try normalizeMintURL(mintURL)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         CashuEnvironment.current.setup(baseURL: normalizedURL)
         
         guard KeysetID.validateKeysetID(keysetID) else {
@@ -253,28 +253,7 @@ public struct KeyExchangeService: Sendable {
     
     // MARK: - Utility Methods
     
-    /// Normalize mint URL
-    private nonisolated func normalizeMintURL(_ mintURL: String) throws -> String {
-        var normalizedURL = mintURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        if !normalizedURL.contains("://") {
-            normalizedURL = "https://" + normalizedURL
-        }
-        
-        if normalizedURL.hasSuffix("/") {
-            normalizedURL = String(normalizedURL.dropLast())
-        }
-        
-        guard let url = URL(string: normalizedURL),
-              let scheme = url.scheme,
-              ["http", "https"].contains(scheme.lowercased()),
-              let host = url.host,
-              !host.isEmpty else {
-            throw CashuError.invalidMintURL
-        }
-        
-        return normalizedURL
-    }
+    // Removed local normalizeMintURL in favor of ValidationUtils.normalizeMintURL
     
     /// Convert amount from whole units to minor units
     /// Example: 1.23 USD -> 123 (cents)

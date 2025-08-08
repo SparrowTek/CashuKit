@@ -530,28 +530,7 @@ public struct SwapService: Sendable {
         return unitCounts.max(by: { $0.value < $1.value })?.key
     }
     
-    /// Normalize mint URL
-    private nonisolated func normalizeMintURL(_ mintURL: String) throws -> String {
-        var normalizedURL = mintURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        if !normalizedURL.contains("://") {
-            normalizedURL = "https://" + normalizedURL
-        }
-        
-        if normalizedURL.hasSuffix("/") {
-            normalizedURL = String(normalizedURL.dropLast())
-        }
-        
-        guard let url = URL(string: normalizedURL),
-              let scheme = url.scheme,
-              ["http", "https"].contains(scheme.lowercased()),
-              let host = url.host,
-              !host.isEmpty else {
-            throw CashuError.invalidMintURL
-        }
-        
-        return normalizedURL
-    }
+    // Removed local normalizeMintURL in favor of ValidationUtils.normalizeMintURL
     
     // MARK: - Validation Methods
     

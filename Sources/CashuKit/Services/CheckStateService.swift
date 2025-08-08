@@ -25,8 +25,8 @@ public struct CheckStateService: Sendable {
     ///   - mintURL: The base URL of the mint
     /// - Returns: PostCheckStateResponse with state information
     public func checkStates(yValues: [String], from mintURL: String) async throws -> PostCheckStateResponse {
-        // Validate and normalize the mint URL
-        let normalizedURL = try normalizeMintURL(mintURL)
+        // Validate and normalize the mint URL (centralized)
+        let normalizedURL = try ValidationUtils.normalizeMintURL(mintURL)
         
         // Set the base URL for this request
         CashuEnvironment.current.setup(baseURL: normalizedURL)
@@ -68,31 +68,7 @@ public struct CheckStateService: Sendable {
     
     // MARK: - Private helper methods
     
-    /// Normalize a mint URL (add scheme if missing, remove trailing slash)
-    private nonisolated func normalizeMintURL(_ mintURL: String) throws -> String {
-        var normalizedURL = mintURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Add https:// if no scheme is present
-        if !normalizedURL.contains("://") {
-            normalizedURL = "https://" + normalizedURL
-        }
-        
-        // Remove trailing slash
-        if normalizedURL.hasSuffix("/") {
-            normalizedURL = String(normalizedURL.dropLast())
-        }
-        
-        // Basic validation
-        guard let url = URL(string: normalizedURL),
-              let scheme = url.scheme,
-              ["http", "https"].contains(scheme.lowercased()),
-              let host = url.host,
-              !host.isEmpty else {
-            throw CashuError.invalidMintURL
-        }
-        
-        return normalizedURL
-    }
+    // Removed local normalizeMintURL in favor of ValidationUtils.normalizeMintURL
 }
 
 // MARK: - CheckState API Endpoint
