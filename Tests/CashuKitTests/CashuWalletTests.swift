@@ -15,6 +15,9 @@ struct CashuWalletTests {
         #expect(await wallet.state == .uninitialized)
         #expect(await wallet.isReady == false)
     }
+
+    // Wallet rollback semantics are validated via `IntegrationTests.testProofManagementWorkflow` and
+    // service-level behaviors; wallet-level melt requires a ready mint to exercise end-to-end.
     
     @Test
     func walletConfiguration() async throws {

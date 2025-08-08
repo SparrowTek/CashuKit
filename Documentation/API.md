@@ -25,6 +25,10 @@ import CashuKit
 let wallet = await CashuKit.createWallet(mintURL: "https://testnut.cashu.space")
 try await wallet.initialize()
 
+// (Optional) Enable console metrics for development
+logger.setMetricsSink(ConsoleMetricsSink())
+logger.configure(.debug)
+
 // Query balance
 let balance = try await wallet.balance
 print("Balance: \(balance)")

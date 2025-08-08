@@ -74,6 +74,23 @@ public protocol MetricsSink: Sendable {
     func timing(_ name: String, seconds: Double, tags: [String: String]?)
 }
 
+// Simple console metrics sink for development/testing
+public struct ConsoleMetricsSink: MetricsSink {
+    public init() {}
+    public func increment(_ name: String, by value: Int, tags: [String : String]?) {
+        #if DEBUG
+        let tagsStr = tags?.map { "\($0)=\($1)" }.joined(separator: ",") ?? ""
+        print("[METRIC] counter name=\(name) by=\(value) tags=\(tagsStr)")
+        #endif
+    }
+    public func timing(_ name: String, seconds: Double, tags: [String : String]?) {
+        #if DEBUG
+        let tagsStr = tags?.map { "\($0)=\($1)" }.joined(separator: ",") ?? ""
+        print("[METRIC] timing name=\(name) seconds=\(String(format: "%.4f", seconds)) tags=\(tagsStr)")
+        #endif
+    }
+}
+
 // MARK: - Logger Configuration
 
 public struct LoggerConfiguration: Sendable {
@@ -105,7 +122,7 @@ public final class Logger: LoggerProtocol, @unchecked Sendable {
     private var configuration: LoggerConfiguration
     private let loggers: [LogCategory: os.Logger]
     private let queue = DispatchQueue(label: "com.cashukit.logger", attributes: .concurrent)
-    private var metricsSink: MetricsSink?
+    private var metricsSink: (any MetricsSink)?
     
     public static let shared = Logger()
     
@@ -138,13 +155,13 @@ public final class Logger: LoggerProtocol, @unchecked Sendable {
     }
 
     // MARK: - Metrics configuration
-    public func setMetricsSink(_ sink: MetricsSink?) {
+    public func setMetricsSink(_ sink: (any MetricsSink)?) {
         queue.async(flags: .barrier) {
             self.metricsSink = sink
         }
     }
     
-    private func withMetricsSink<T>(_ block: (MetricsSink?) -> T) -> T {
+    private func withMetricsSink<T>(_ block: ((any MetricsSink)?) -> T) -> T {
         var result: T!
         queue.sync {
             result = block(self.metricsSink)

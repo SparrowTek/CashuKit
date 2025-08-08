@@ -226,6 +226,7 @@ public actor CashuWallet {
         do {
             // Fetch mint information
             logger.debug("Fetching mint information", category: .wallet)
+            logger.metricIncrement("cashukit.wallet.initialize.start", tags: ["mint": configuration.mintURL])
             currentMintInfo = try await logger.logPerformance(operation: "Fetch mint info", category: .performance) {
                 try await mintInfoService.getMintInfoWithRetry(
                     from: configuration.mintURL,
@@ -248,9 +249,11 @@ public actor CashuWallet {
             
             walletState = .ready
             logger.info("Wallet initialized successfully", category: .wallet)
+            logger.metricIncrement("cashukit.wallet.initialize.success", tags: ["mint": configuration.mintURL])
         } catch {
             walletState = .error(error as? CashuError ?? CashuError.invalidMintConfiguration)
             logger.error("Wallet initialization failed: \(error)", category: .wallet)
+            logger.metricIncrement("cashukit.wallet.initialize.failure", tags: ["mint": configuration.mintURL])
             ErrorAnalytics.logError(error, context: ["operation": "wallet_initialization", "mint": configuration.mintURL])
             throw error
         }
@@ -500,12 +503,17 @@ public actor CashuWallet {
         guard let mintService = mintService else {
             throw CashuError.walletNotInitialized
         }
-        return try await mintService.mint(
+        logger.metricIncrement("cashukit.mint.start", tags: ["mint": configuration.mintURL, "unit": configuration.unit])
+        let result = try await logger.logPerformance(operation: "wallet.mint", category: .performance) {
+            try await mintService.mint(
             amount: amount,
             method: method,
             unit: configuration.unit,
             at: configuration.mintURL
-        )
+            )
+        }
+        logger.metricIncrement("cashukit.mint.success", tags: ["mint": configuration.mintURL, "unit": configuration.unit])
+        return result
     }
     
     /// Send tokens (prepare for transfer)
@@ -592,20 +600,50 @@ public actor CashuWallet {
         
         // Melt service is always available since it's initialized in setupServices()
         
-        // Simplified implementation - use the existing high-level methods
+        // Prepare melt to know exactly which proofs will be used
         let availableProofs = try await proofManager.getAvailableProofs()
-        
-        // For now, just use the service's meltToPayment method
-        guard let meltService = meltService else {
-            throw CashuError.walletNotInitialized
-        }
-        return try await meltService.meltToPayment(
+        guard let meltService = meltService else { throw CashuError.walletNotInitialized }
+
+        let preparation = try await meltService.prepareMelt(
             paymentRequest: paymentRequest,
-            method: PaymentMethod.bolt11,
+            method: PaymentMethod(rawValue: method) ?? .bolt11,
             unit: configuration.unit,
-            from: availableProofs,
+            availableProofs: availableProofs,
             at: configuration.mintURL
         )
+
+        // Mark selected proofs as pending spent
+        try await proofManager.markAsPendingSpent(preparation.inputProofs)
+
+        logger.metricIncrement("cashukit.melt.start", tags: ["mint": configuration.mintURL, "unit": configuration.unit])
+        do {
+            let result = try await logger.logPerformance(operation: "wallet.melt", category: .performance) {
+                try await meltService.executeCompleteMelt(
+                    preparation: preparation,
+                    method: PaymentMethod(rawValue: method) ?? .bolt11,
+                    at: configuration.mintURL
+                )
+            }
+
+            if result.state == .paid {
+                try await proofManager.finalizePendingSpent(preparation.inputProofs)
+                try await proofManager.markAsSpent(preparation.inputProofs)
+                try await proofManager.removeProofs(preparation.inputProofs)
+                if !result.changeProofs.isEmpty {
+                    try await proofManager.addProofs(result.changeProofs)
+                }
+                logger.metricIncrement("cashukit.melt.finalized", tags: ["mint": configuration.mintURL])
+            } else {
+                try await proofManager.rollbackPendingSpent(preparation.inputProofs)
+                logger.metricIncrement("cashukit.melt.rolled_back", tags: ["mint": configuration.mintURL, "state": String(describing: result.state)])
+            }
+
+            return result
+        } catch {
+            try await proofManager.rollbackPendingSpent(preparation.inputProofs)
+            logger.metricIncrement("cashukit.melt.error", tags: ["mint": configuration.mintURL])
+            throw error
+        }
     }
     
     // MARK: - Token Import/Export

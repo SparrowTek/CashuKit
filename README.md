@@ -112,6 +112,10 @@ let wallet = await CashuWallet(configuration: config)
 // Initialize the wallet
 try await wallet.initialize()
 
+// (Optional) Enable console metrics for development
+logger.setMetricsSink(ConsoleMetricsSink())
+logger.configure(.debug)
+
 // Check balance
 let balance = try await wallet.balance
 print("Current balance: \(balance) sats")
@@ -136,6 +140,18 @@ let meltResult = try await wallet.melt(
     method: "bolt11"
 )
 ```
+
+### Metrics and Logging
+
+- The logger supports categories and levels with sensitive-field redaction by default.
+- Metrics are optional via `MetricsSink`. For development:
+
+```swift
+logger.setMetricsSink(ConsoleMetricsSink())
+logger.metricIncrement("cashukit.example.counter", by: 1, tags: ["env": "dev"]) // optional manual metric
+```
+
+Production apps should provide a custom sink that forwards to your telemetry (e.g., StatsD, OpenTelemetry).
 
 ## Advanced Features
 
