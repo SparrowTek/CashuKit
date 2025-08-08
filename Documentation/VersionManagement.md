@@ -148,10 +148,10 @@ When introducing breaking changes:
 - [ ] Update documentation
 
 ### 2. Testing
-- [ ] Integration tests pass
-- [ ] Example projects build successfully
-- [ ] Performance benchmarks meet targets
-- [ ] Security review completed
+- [x] Integration tests pass
+- [x] Example projects build successfully (SDK examples)
+- [x] Performance benchmarks meet targets
+- [x] Security review checklist prepared (see SecurityModel.md)
 
 ### 3. Release
 - [ ] Create release branch
