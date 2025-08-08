@@ -67,6 +67,13 @@ public protocol LoggerProtocol: Sendable {
     func setMinimumLogLevel(_ level: LogLevel)
 }
 
+// MARK: - Metrics
+
+public protocol MetricsSink: Sendable {
+    func increment(_ name: String, by value: Int, tags: [String: String]?)
+    func timing(_ name: String, seconds: Double, tags: [String: String]?)
+}
+
 // MARK: - Logger Configuration
 
 public struct LoggerConfiguration: Sendable {
@@ -98,6 +105,7 @@ public final class Logger: LoggerProtocol, @unchecked Sendable {
     private var configuration: LoggerConfiguration
     private let loggers: [LogCategory: os.Logger]
     private let queue = DispatchQueue(label: "com.cashukit.logger", attributes: .concurrent)
+    private var metricsSink: MetricsSink?
     
     public static let shared = Logger()
     
@@ -127,6 +135,21 @@ public final class Logger: LoggerProtocol, @unchecked Sendable {
                 redactSensitiveData: self.configuration.redactSensitiveData
             )
         }
+    }
+
+    // MARK: - Metrics configuration
+    public func setMetricsSink(_ sink: MetricsSink?) {
+        queue.async(flags: .barrier) {
+            self.metricsSink = sink
+        }
+    }
+    
+    private func withMetricsSink<T>(_ block: (MetricsSink?) -> T) -> T {
+        var result: T!
+        queue.sync {
+            result = block(self.metricsSink)
+        }
+        return result
     }
     
     public func log(
@@ -251,8 +274,25 @@ public extension Logger {
         defer {
             let duration = CFAbsoluteTimeGetCurrent() - start
             info("\(operation) completed in \(String(format: "%.3f", duration))s", category: category, file: file, function: function, line: line)
+            // Emit metrics timing
+            _ = withMetricsSink { sink in
+                sink?.timing("cashukit.operation.duration", seconds: duration, tags: ["operation": operation, "category": category.rawValue])
+            }
         }
         return try await block()
+    }
+
+    // Simple metrics helpers
+    func metricIncrement(_ name: String, by value: Int = 1, tags: [String: String]? = nil) {
+        _ = withMetricsSink { sink in
+            sink?.increment(name, by: value, tags: tags)
+        }
+    }
+    
+    func metricTiming(_ name: String, seconds: Double, tags: [String: String]? = nil) {
+        _ = withMetricsSink { sink in
+            sink?.timing(name, seconds: seconds, tags: tags)
+        }
     }
 }
 
