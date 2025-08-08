@@ -144,3 +144,41 @@ struct MPPIntegrationTests {
         }
     }
 }
+
+@Test("NUT-05 + NUT-08 + NUT-15 combination structure")
+func testMeltWithFeeReturnAndMPPStructure() async throws {
+    // Build an MPP melt quote with fee reserve suggested by NUT-08
+    let mppRequest = PostMeltQuoteBolt11Request.withMPP(
+        request: "lnbc...",
+        unit: "sat",
+        partialAmountMsat: 25000
+    )
+    #expect(mppRequest.validate())
+
+    // Create a fake fee-reserve-aware response to drive blank outputs
+    let quote = PostMeltQuoteResponse(
+        quote: "q123",
+        amount: 1000,
+        unit: "sat",
+        state: .unpaid,
+        expiry: Int(Date().timeIntervalSince1970) + 3600,
+        feeReserve: 256
+    )
+    #expect(quote.supportsFeeReturn)
+    let blankCount = quote.recommendedBlankOutputs
+    #expect(blankCount > 0)
+
+    // Generate blank outputs using NUT-08 helpers
+    let blanks = try await BlankOutputGenerator.generateBlankOutputs(count: blankCount, keysetID: "k1")
+    #expect(blanks.count == blankCount)
+
+    // Build a NUT-05 melt request carrying both inputs and NUT-08 outputs
+    let inputs = [Proof(amount: 1024, id: "k1", secret: "s1", C: "c1")]
+    let meltRequest = PostMeltRequest(
+        quote: quote.quote,
+        inputs: inputs,
+        outputs: blanks.map { $0.blindedMessage }
+    )
+    #expect(meltRequest.validate())
+    #expect(meltRequest.supportsFeeReturn)
+}

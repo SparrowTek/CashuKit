@@ -224,3 +224,18 @@ struct NUT09Tests {
         #expect(response.signatures.count == 0)
     }
 }
+
+@Test("NUT-09 restoration edge cases")
+func testRestorationGapsEdgeCases() throws {
+    // Empty outputs/signatures: valid but yields no pairs
+    let empty = PostRestoreResponse(outputs: [], signatures: [])
+    #expect(empty.isValid)
+    #expect(empty.signaturePairs.isEmpty)
+
+    // Mismatched amounts: current implementation considers structure valid; pairs still returned
+    let out = BlindedMessage(amount: 2, id: "k1", B_: "02ab")
+    let sig = BlindSignature(amount: 4, id: "k1", C_: "03cd")
+    let mismatch = PostRestoreResponse(outputs: [out], signatures: [sig])
+    #expect(mismatch.isValid)
+    #expect(mismatch.signaturePairs.count == 1)
+}

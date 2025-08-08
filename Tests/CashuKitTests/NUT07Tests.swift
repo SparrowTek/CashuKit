@@ -1,3 +1,42 @@
+import Testing
+@testable import CashuKit
+import Foundation
+
+@Suite("NUT07 tests")
+struct NUT07TestsExtra {
+    @Test
+    func mixedSpentUnspentSelection() async throws {
+        let storage = InMemoryProofStorage()
+        let manager = await ProofManager(storage: storage)
+
+        let p1 = Proof(amount: 1, id: "k1", secret: "s1", C: "c1")
+        let p2 = Proof(amount: 2, id: "k1", secret: "s2", C: "c2")
+        let p4 = Proof(amount: 4, id: "k1", secret: "s4", C: "c4")
+        try await manager.addProofs([p1, p2, p4])
+
+        // Mark one as spent and one as pending; only remaining should be selected
+        try await manager.markAsSpent([p4])
+        try await manager.markAsPendingSpent([p1])
+
+        let available = try await manager.getAvailableProofs()
+        let secrets = Set(available.map { $0.secret })
+        #expect(!secrets.contains("s4")) // spent
+        #expect(!secrets.contains("s1")) // pending
+        #expect(secrets.contains("s2"))  // unspent
+
+        // Selection should only use unspent, non-pending
+        let selected = try await manager.selectProofs(amount: 1)
+        #expect(selected.count == 1)
+        #expect(selected.first?.secret == "s2")
+
+        // Rollback pending and ensure it becomes available
+        try await manager.rollbackPendingSpent([p1])
+        let availableAfterRollback = try await manager.getAvailableProofs()
+        let setAfterRollback = Set(availableAfterRollback.map { $0.secret })
+        #expect(setAfterRollback.contains("s1"))
+    }
+}
+
 //
 //  NUT07Tests.swift
 //  CashuKit
