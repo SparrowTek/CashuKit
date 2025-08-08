@@ -243,13 +243,18 @@ public final class Logger: LoggerProtocol, @unchecked Sendable {
             options: .regularExpression
         )
         
-        // Redact token strings
-        let tokenPattern = #"cashu[A-Za-z0-9+/=]{20,}"#
-        redacted = redacted.replacingOccurrences(
-            of: tokenPattern,
-            with: "[REDACTED_TOKEN]",
-            options: .regularExpression
-        )
+        // Redact token strings and Authorization headers
+        let tokenPatterns = [
+            #"cashu[A-Za-z0-9+/=]{20,}"#,
+            #"(?i)authorization[:\s]+bearer\s+[A-Za-z0-9\-_.+/=]+"#
+        ]
+        for pattern in tokenPatterns {
+            redacted = redacted.replacingOccurrences(
+                of: pattern,
+                with: "[REDACTED_TOKEN]",
+                options: .regularExpression
+            )
+        }
         
         return redacted
     }

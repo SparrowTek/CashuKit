@@ -918,13 +918,9 @@ public actor CashuWallet {
             keysetId: activeKeyset.id
         )
         
-        // Store access tokens securely if using keychain
+        // Store access tokens securely if using keychain, deterministically as a single list
         if let keychainManager = keychainManager {
-            for (index, token) in tokens.enumerated() {
-                let tokenData = try JSONEncoder().encode(token)
-                let tokenString = String(data: tokenData, encoding: .utf8) ?? ""
-                try await keychainManager.storeAccessToken(tokenString, mintURL: "\(configuration.mintURL)_access_\(index)")
-            }
+            try await keychainManager.storeAccessTokens(tokens, mintURL: configuration.mintURL)
         }
         
         return tokens
@@ -955,14 +951,9 @@ public actor CashuWallet {
         
         // Try to load from keychain if available
         if let keychainManager = keychainManager {
-            // Check for stored access tokens
-            for index in 0..<10 {  // Check up to 10 stored tokens
-                if let tokenString = try? await keychainManager.retrieveAccessToken(mintURL: "\(configuration.mintURL)_access_\(index)"),
-                   let tokenData = tokenString.data(using: .utf8),
-                   let proof = try? JSONDecoder().decode(Proof.self, from: tokenData) {
-                    // Return the first available token
-                    return AccessToken(access: proof.secret)
-                }
+            let stored = (try? await keychainManager.retrieveAccessTokens(mintURL: configuration.mintURL)) ?? []
+            if let proof = stored.first {
+                return AccessToken(access: proof.secret)
             }
         }
         

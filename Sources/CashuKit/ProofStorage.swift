@@ -36,6 +36,8 @@ public protocol ProofStorage: Sendable {
     func markAsPendingSpent(_ proofs: [Proof]) async throws
     func finalizePendingSpent(_ proofs: [Proof]) async throws
     func rollbackPendingSpent(_ proofs: [Proof]) async throws
+    /// Retrieve proofs currently marked pending-spent (for exclusion during selection)
+    func getPendingSpent() async throws -> [Proof]
 }
 
 // MARK: - In-Memory Proof Storage
@@ -95,6 +97,10 @@ public final class InMemoryProofStorage: ProofStorage, Sendable {
     public func rollbackPendingSpent(_ proofs: [Proof]) async throws {
         let wrappers = Set(proofs.map(ProofWrapper.init))
         pendingSpent.subtract(wrappers)
+    }
+
+    public func getPendingSpent() async throws -> [Proof] {
+        return Array(pendingSpent.map { $0.proof })
     }
 }
 
@@ -157,13 +163,17 @@ public final class ProofManager: Sendable {
     /// Get all available (unspent) proofs
     public func getAvailableProofs() async throws -> [Proof] {
         let allProofs = try await storage.retrieveAll()
-        return allProofs.filter { !spentProofs.contains(ProofWrapper($0)) }
+        let pending = try await storage.getPendingSpent()
+        let pendingSet = Set(pending.map(ProofWrapper.init))
+        return allProofs.filter { !spentProofs.contains(ProofWrapper($0)) && !pendingSet.contains(ProofWrapper($0)) }
     }
     
     /// Get available proofs for a specific keyset
     public func getAvailableProofs(keysetID: String) async throws -> [Proof] {
         let keysetProofs = try await storage.retrieve(keysetID: keysetID)
-        return keysetProofs.filter { !spentProofs.contains(ProofWrapper($0)) }
+        let pending = try await storage.getPendingSpent()
+        let pendingSet = Set(pending.map(ProofWrapper.init))
+        return keysetProofs.filter { !spentProofs.contains(ProofWrapper($0)) && !pendingSet.contains(ProofWrapper($0)) }
     }
     
     /// Mark proofs as spent

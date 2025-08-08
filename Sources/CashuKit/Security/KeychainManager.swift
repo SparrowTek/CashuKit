@@ -21,6 +21,7 @@ public actor KeychainManager {
         static let mintPrivateKeyPrefix = "mint.privatekey."
         static let ephemeralKeyPrefix = "ephemeral.key."
         static let accessTokenPrefix = "access.token."
+        static let accessTokenListPrefix = "access.token.list."
     }
     
     // MARK: - Properties
@@ -184,47 +185,87 @@ public actor KeychainManager {
     
     /// Store an access token for a mint
     public func storeAccessToken(_ token: String, mintURL: String) throws {
-        // Sanitize mint URL for use as account name
-        let sanitizedURL = mintURL.replacingOccurrences(of: ":", with: "_")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: ".", with: "_")
-        
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenPrefix, mintURL: mintURL)
         let config = KeychainConfiguration(
             serviceName: KeychainConstants.serviceName,
             accessGroup: accessGroup,
-            accountName: "\(KeychainConstants.accessTokenPrefix)\(sanitizedURL)"
+            accountName: key
         )
         try Vault.savePrivateKey(token, keychainConfiguration: config)
     }
     
     /// Retrieve an access token for a mint
     public func retrieveAccessToken(mintURL: String) throws -> String? {
-        // Sanitize mint URL for use as account name
-        let sanitizedURL = mintURL.replacingOccurrences(of: ":", with: "_")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: ".", with: "_")
-        
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenPrefix, mintURL: mintURL)
         let config = KeychainConfiguration(
             serviceName: KeychainConstants.serviceName,
             accessGroup: accessGroup,
-            accountName: "\(KeychainConstants.accessTokenPrefix)\(sanitizedURL)"
+            accountName: key
         )
         return try? Vault.getPrivateKey(keychainConfiguration: config)
     }
     
     /// Delete an access token for a mint
     public func deleteAccessToken(mintURL: String) throws {
-        // Sanitize mint URL for use as account name
-        let sanitizedURL = mintURL.replacingOccurrences(of: ":", with: "_")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: ".", with: "_")
-        
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenPrefix, mintURL: mintURL)
         let config = KeychainConfiguration(
             serviceName: KeychainConstants.serviceName,
             accessGroup: accessGroup,
-            accountName: "\(KeychainConstants.accessTokenPrefix)\(sanitizedURL)"
+            accountName: key
         )
         try Vault.deletePrivateKey(keychainConfiguration: config)
+    }
+
+    /// Store multiple access token proofs as a single list for a mint
+    public func storeAccessTokens(_ tokens: [Proof], mintURL: String) throws {
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenListPrefix, mintURL: mintURL)
+        let config = KeychainConfiguration(
+            serviceName: KeychainConstants.serviceName,
+            accessGroup: accessGroup,
+            accountName: key
+        )
+        let data = try JSONEncoder().encode(tokens)
+        let base64 = data.base64EncodedString()
+        try Vault.savePrivateKey(base64, keychainConfiguration: config)
+    }
+
+    /// Retrieve access token proofs list for a mint
+    public func retrieveAccessTokens(mintURL: String) throws -> [Proof] {
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenListPrefix, mintURL: mintURL)
+        let config = KeychainConfiguration(
+            serviceName: KeychainConstants.serviceName,
+            accessGroup: accessGroup,
+            accountName: key
+        )
+        guard let base64 = try? Vault.getPrivateKey(keychainConfiguration: config),
+              let data = Data(base64Encoded: base64),
+              let tokens = try? JSONDecoder().decode([Proof].self, from: data) else {
+            return []
+        }
+        return tokens
+    }
+
+    /// Delete access token proofs list for a mint
+    public func deleteAccessTokens(mintURL: String) throws {
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenListPrefix, mintURL: mintURL)
+        let config = KeychainConfiguration(
+            serviceName: KeychainConstants.serviceName,
+            accessGroup: accessGroup,
+            accountName: key
+        )
+        try Vault.deletePrivateKey(keychainConfiguration: config)
+    }
+
+    // MARK: - Helpers
+
+    private func makeSanitizedAccount(prefix: String, mintURL: String) -> String {
+        let normalized = mintURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sanitizedURL = normalized
+            .replacingOccurrences(of: "://", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: ".", with: "_")
+        return "\(prefix)\(sanitizedURL)"
     }
     
     // MARK: - Secure Enclave Support

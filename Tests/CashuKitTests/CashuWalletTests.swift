@@ -16,6 +16,46 @@ struct CashuWalletTests {
         #expect(await wallet.isReady == false)
     }
 
+    @Test
+    func meltIdempotencyAndRollback_noLostProofsOnRetry() async throws {
+        // Arrange a wallet with deterministic setup
+        let config = WalletConfiguration(mintURL: "https://test.mint.example.com")
+        let wallet = await CashuWallet(configuration: config)
+        try? await wallet.initialize()
+        if await wallet.isReady == false {
+            // Environment cannot initialize (offline); skip this test
+            return
+        }
+
+        // Seed wallet by importing a token that contains two proofs
+        let p1 = Proof(amount: 2, id: "k1", secret: "sA", C: "cA")
+        let p2 = Proof(amount: 2, id: "k1", secret: "sB", C: "cB")
+        let token = CashuToken(token: [TokenEntry(mint: config.mintURL, proofs: [p1, p2])], unit: config.unit)
+        _ = try await wallet.receive(token: token)
+
+        // Attempt melt with an invalid request so execution fails after pending
+        do {
+            _ = try await wallet.melt(paymentRequest: "lnbc_invalid_invoice")
+            #expect(Bool(false), "Expected melt to throw")
+        } catch {
+            // expected
+        }
+
+        // After failure, proofs must still be available (rolled back)
+        let availableAfterFailure = try await wallet.selectProofsForAmount(2)
+        let setAfterFailure = Set(availableAfterFailure.map { $0.secret })
+        #expect(setAfterFailure.contains("sA") || setAfterFailure.contains("sB"))
+
+        // Retry melt again (still invalid) to ensure idempotency of pending markers
+        do {
+            _ = try await wallet.melt(paymentRequest: "lnbc_invalid_invoice")
+            #expect(Bool(false), "Expected melt to throw on retry")
+        } catch { }
+
+        let availableAfterRetry = try await wallet.selectProofsForAmount(2)
+        let setAfterRetry = Set(availableAfterRetry.map { $0.secret })
+        #expect(setAfterRetry.contains("sA") || setAfterRetry.contains("sB"))
+    }
     // Wallet rollback semantics are validated via `IntegrationTests.testProofManagementWorkflow` and
     // service-level behaviors; wallet-level melt requires a ready mint to exercise end-to-end.
     
