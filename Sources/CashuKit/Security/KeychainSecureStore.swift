@@ -1,16 +1,17 @@
 //
-//  KeychainManager.swift
+//  KeychainSecureStore.swift
 //  CashuKit
 //
-//  Secure key storage using Vault framework
+//  Apple Keychain implementation of SecureStore protocol
 //
 
 import Foundation
+import CoreCashu
 import Vault
 import P256K
 
-/// Manager for secure storage of cryptographic keys using Keychain
-public actor KeychainManager {
+/// Apple Keychain implementation of the SecureStore protocol
+public actor KeychainSecureStore: SecureStore {
     
     // MARK: - Constants
     
@@ -45,8 +46,9 @@ public actor KeychainManager {
     
     // MARK: - Wallet Key Management
     
-    /// Store wallet mnemonic securely
-    public func storeMnemonic(_ mnemonic: String) throws {
+    // MARK: - SecureStore Protocol Implementation
+    
+    public func saveMnemonic(_ mnemonic: String) async throws {
         let config = KeychainConfiguration(
             serviceName: KeychainConstants.serviceName,
             accessGroup: accessGroup,
@@ -55,8 +57,7 @@ public actor KeychainManager {
         try Vault.savePrivateKey(mnemonic, keychainConfiguration: config)
     }
     
-    /// Retrieve wallet mnemonic
-    public func retrieveMnemonic() throws -> String? {
+    public func loadMnemonic() async throws -> String? {
         let config = KeychainConfiguration(
             serviceName: KeychainConstants.serviceName,
             accessGroup: accessGroup,
@@ -65,46 +66,126 @@ public actor KeychainManager {
         return try? Vault.getPrivateKey(keychainConfiguration: config)
     }
     
-    /// Store wallet seed securely
-    public func storeSeed(_ seed: Data) throws {
+    public func saveSeed(_ seed: String) async throws {
         let config = KeychainConfiguration(
             serviceName: KeychainConstants.serviceName,
             accessGroup: accessGroup,
             accountName: KeychainConstants.walletSeedAccount
         )
-        // Convert Data to hex string for storage
-        let seedHex = seed.hexString
-        try Vault.savePrivateKey(seedHex, keychainConfiguration: config)
+        try Vault.savePrivateKey(seed, keychainConfiguration: config)
     }
     
-    /// Retrieve wallet seed
-    public func retrieveSeed() throws -> Data? {
+    public func loadSeed() async throws -> String? {
         let config = KeychainConfiguration(
             serviceName: KeychainConstants.serviceName,
             accessGroup: accessGroup,
             accountName: KeychainConstants.walletSeedAccount
         )
-        guard let seedHex = try? Vault.getPrivateKey(keychainConfiguration: config) else {
-            return nil
-        }
-        return Data(hexString: seedHex)
+        return try? Vault.getPrivateKey(keychainConfiguration: config)
     }
     
-    /// Delete wallet keys (mnemonic and seed)
-    public func deleteWalletKeys() throws {
-        let mnemonicConfig = KeychainConfiguration(
+    public func deleteMnemonic() async throws {
+        let config = KeychainConfiguration(
             serviceName: KeychainConstants.serviceName,
             accessGroup: accessGroup,
             accountName: KeychainConstants.walletMnemonicAccount
         )
-        let seedConfig = KeychainConfiguration(
+        try Vault.deletePrivateKey(keychainConfiguration: config)
+    }
+    
+    public func deleteSeed() async throws {
+        let config = KeychainConfiguration(
             serviceName: KeychainConstants.serviceName,
             accessGroup: accessGroup,
             accountName: KeychainConstants.walletSeedAccount
         )
-        
-        try? Vault.deletePrivateKey(keychainConfiguration: mnemonicConfig)
-        try? Vault.deletePrivateKey(keychainConfiguration: seedConfig)
+        try Vault.deletePrivateKey(keychainConfiguration: config)
+    }
+    
+    // MARK: - Access Token Operations (NUT-21)
+    
+    public func saveAccessToken(_ token: String, mintURL: URL) async throws {
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenPrefix, mintURL: mintURL.absoluteString)
+        let config = KeychainConfiguration(
+            serviceName: KeychainConstants.serviceName,
+            accessGroup: accessGroup,
+            accountName: key
+        )
+        try Vault.savePrivateKey(token, keychainConfiguration: config)
+    }
+    
+    public func loadAccessToken(mintURL: URL) async throws -> String? {
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenPrefix, mintURL: mintURL.absoluteString)
+        let config = KeychainConfiguration(
+            serviceName: KeychainConstants.serviceName,
+            accessGroup: accessGroup,
+            accountName: key
+        )
+        return try? Vault.getPrivateKey(keychainConfiguration: config)
+    }
+    
+    public func deleteAccessToken(mintURL: URL) async throws {
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenPrefix, mintURL: mintURL.absoluteString)
+        let config = KeychainConfiguration(
+            serviceName: KeychainConstants.serviceName,
+            accessGroup: accessGroup,
+            accountName: key
+        )
+        try Vault.deletePrivateKey(keychainConfiguration: config)
+    }
+    
+    // MARK: - Access Token List Operations (NUT-22)
+    
+    public func saveAccessTokenList(_ tokens: [String], mintURL: URL) async throws {
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenListPrefix, mintURL: mintURL.absoluteString)
+        let config = KeychainConfiguration(
+            serviceName: KeychainConstants.serviceName,
+            accessGroup: accessGroup,
+            accountName: key
+        )
+        let data = try JSONEncoder().encode(tokens)
+        let base64 = data.base64EncodedString()
+        try Vault.savePrivateKey(base64, keychainConfiguration: config)
+    }
+    
+    public func loadAccessTokenList(mintURL: URL) async throws -> [String]? {
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenListPrefix, mintURL: mintURL.absoluteString)
+        let config = KeychainConfiguration(
+            serviceName: KeychainConstants.serviceName,
+            accessGroup: accessGroup,
+            accountName: key
+        )
+        guard let base64 = try? Vault.getPrivateKey(keychainConfiguration: config),
+              let data = Data(base64Encoded: base64),
+              let tokens = try? JSONDecoder().decode([String].self, from: data) else {
+            return nil
+        }
+        return tokens
+    }
+    
+    public func deleteAccessTokenList(mintURL: URL) async throws {
+        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenListPrefix, mintURL: mintURL.absoluteString)
+        let config = KeychainConfiguration(
+            serviceName: KeychainConstants.serviceName,
+            accessGroup: accessGroup,
+            accountName: key
+        )
+        try Vault.deletePrivateKey(keychainConfiguration: config)
+    }
+    
+    // MARK: - Utility Operations
+    
+    public func clearAll() async throws {
+        try await deleteMnemonic()
+        try await deleteSeed()
+        // Note: Access tokens would need to be tracked separately
+        // as we don't know all mint URLs
+    }
+    
+    public func hasStoredData() async throws -> Bool {
+        let hasMnemonic = try await loadMnemonic() != nil
+        let hasSeed = try await loadSeed() != nil
+        return hasMnemonic || hasSeed
     }
     
     // MARK: - Private Key Management
@@ -181,80 +262,7 @@ public actor KeychainManager {
         try Vault.deletePrivateKey(keychainConfiguration: config)
     }
     
-    // MARK: - Access Token Management
-    
-    /// Store an access token for a mint
-    public func storeAccessToken(_ token: String, mintURL: String) throws {
-        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenPrefix, mintURL: mintURL)
-        let config = KeychainConfiguration(
-            serviceName: KeychainConstants.serviceName,
-            accessGroup: accessGroup,
-            accountName: key
-        )
-        try Vault.savePrivateKey(token, keychainConfiguration: config)
-    }
-    
-    /// Retrieve an access token for a mint
-    public func retrieveAccessToken(mintURL: String) throws -> String? {
-        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenPrefix, mintURL: mintURL)
-        let config = KeychainConfiguration(
-            serviceName: KeychainConstants.serviceName,
-            accessGroup: accessGroup,
-            accountName: key
-        )
-        return try? Vault.getPrivateKey(keychainConfiguration: config)
-    }
-    
-    /// Delete an access token for a mint
-    public func deleteAccessToken(mintURL: String) throws {
-        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenPrefix, mintURL: mintURL)
-        let config = KeychainConfiguration(
-            serviceName: KeychainConstants.serviceName,
-            accessGroup: accessGroup,
-            accountName: key
-        )
-        try Vault.deletePrivateKey(keychainConfiguration: config)
-    }
-
-    /// Store multiple access token proofs as a single list for a mint
-    public func storeAccessTokens(_ tokens: [Proof], mintURL: String) throws {
-        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenListPrefix, mintURL: mintURL)
-        let config = KeychainConfiguration(
-            serviceName: KeychainConstants.serviceName,
-            accessGroup: accessGroup,
-            accountName: key
-        )
-        let data = try JSONEncoder().encode(tokens)
-        let base64 = data.base64EncodedString()
-        try Vault.savePrivateKey(base64, keychainConfiguration: config)
-    }
-
-    /// Retrieve access token proofs list for a mint
-    public func retrieveAccessTokens(mintURL: String) throws -> [Proof] {
-        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenListPrefix, mintURL: mintURL)
-        let config = KeychainConfiguration(
-            serviceName: KeychainConstants.serviceName,
-            accessGroup: accessGroup,
-            accountName: key
-        )
-        guard let base64 = try? Vault.getPrivateKey(keychainConfiguration: config),
-              let data = Data(base64Encoded: base64),
-              let tokens = try? JSONDecoder().decode([Proof].self, from: data) else {
-            return []
-        }
-        return tokens
-    }
-
-    /// Delete access token proofs list for a mint
-    public func deleteAccessTokens(mintURL: String) throws {
-        let key = makeSanitizedAccount(prefix: KeychainConstants.accessTokenListPrefix, mintURL: mintURL)
-        let config = KeychainConfiguration(
-            serviceName: KeychainConstants.serviceName,
-            accessGroup: accessGroup,
-            accountName: key
-        )
-        try Vault.deletePrivateKey(keychainConfiguration: config)
-    }
+    // MARK: - Legacy Methods (kept for backward compatibility)
 
     // MARK: - Helpers
 
@@ -285,10 +293,10 @@ public actor KeychainManager {
     // MARK: - Cleanup
     
     /// Delete all stored keys (use with caution!)
-    public func deleteAllKeys() throws {
+    public func deleteAllKeys() async throws {
         // This would need to iterate through all possible keys
         // For now, just delete known wallet keys
-        try deleteWalletKeys()
+        try await clearAll()
         
         // In a production app, you might want to track all stored keys
         // or use a prefix search if the Vault library supports it
