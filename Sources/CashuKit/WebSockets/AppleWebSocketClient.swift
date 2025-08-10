@@ -16,7 +16,8 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
     private var webSocketTask: URLSessionWebSocketTask?
     private let session: URLSession
     private let configuration: WebSocketConfiguration
-    private var pingTimer: Timer?
+    private var pingTask: Task<Void, Never>?
+    private var receiveTask: Task<Void, Never>?
     private var _isConnected: Bool = false
     
     // MARK: - Initialization
@@ -31,6 +32,13 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
     ) {
         self.session = session
         self.configuration = configuration
+    }
+    
+    deinit {
+        // Ensure all tasks are cancelled when deallocating
+        pingTask?.cancel()
+        receiveTask?.cancel()
+        webSocketTask?.cancel()
     }
     
     // MARK: - WebSocketClientProtocol Implementation
@@ -173,6 +181,8 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
     public func disconnect() async {
         _isConnected = false
         stopPingTimer()
+        receiveTask?.cancel()
+        receiveTask = nil
         webSocketTask?.cancel()
         webSocketTask = nil
     }
@@ -182,15 +192,18 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
     private func startReceiving() {
         guard let task = webSocketTask else { return }
         
-        Task {
+        receiveTask?.cancel()
+        receiveTask = Task {
             do {
                 // This will keep the connection alive by continuously receiving
-                while _isConnected {
+                while _isConnected && !Task.isCancelled {
                     _ = try await task.receive()
                 }
             } catch {
                 // Connection closed or error occurred
-                await disconnect()
+                if !Task.isCancelled {
+                    await disconnect()
+                }
             }
         }
     }
@@ -201,11 +214,11 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
         let interval = configuration.pingInterval
         guard interval > 0 else { return }
         
-        // Create a timer that sends pings
-        Task {
-            while _isConnected {
+        // Create a task that sends pings
+        pingTask = Task {
+            while _isConnected && !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                if _isConnected {
+                if _isConnected && !Task.isCancelled {
                     try? await ping()
                 }
             }
@@ -213,8 +226,8 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
     }
     
     private func stopPingTimer() {
-        pingTimer?.invalidate()
-        pingTimer = nil
+        pingTask?.cancel()
+        pingTask = nil
     }
 }
 
