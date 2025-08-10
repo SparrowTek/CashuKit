@@ -14,7 +14,7 @@ public actor BiometricAuthManager {
     
     // MARK: - Types
     
-    public enum BiometricType {
+    public enum BiometricType: Sendable {
         case none
         case touchID
         case faceID

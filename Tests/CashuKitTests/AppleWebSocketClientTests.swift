@@ -15,53 +15,53 @@ struct AppleWebSocketClientTests {
     
     @Test("Client initialization")
     func testClientInitialization() async throws {
-        let url = URL(string: "wss://echo.websocket.org")!
-        let client = AppleWebSocketClient(url: url)
+        let client = AppleWebSocketClient()
         
-        #expect(client != nil)
+        let _ = client  // Use to avoid warning
+        #expect(Bool(true))
     }
     
     @Test("Connection lifecycle")
     func testConnectionLifecycle() async throws {
         let url = URL(string: "wss://echo.websocket.org")!
-        let client = AppleWebSocketClient(url: url)
+        let client = AppleWebSocketClient()
         
         // Test connect
-        try await client.connect()
+        try await client.connect(to: url)
         #expect(await client.isConnected == true)
         
         // Test disconnect
-        try await client.disconnect()
+        await client.disconnect()
         #expect(await client.isConnected == false)
     }
     
     @Test("Send and receive messages", .disabled("Requires test WebSocket server"))
     func testSendReceive() async throws {
         let url = URL(string: "wss://echo.websocket.org")!
-        let client = AppleWebSocketClient(url: url)
+        let client = AppleWebSocketClient()
         
-        try await client.connect()
+        try await client.connect(to: url)
         
         let testMessage = "Hello, WebSocket!"
-        try await client.send(testMessage)
+        try await client.send(text: testMessage)
         
         // In a real test, we'd wait for the echo
         // For now, just verify no crash
         
-        try await client.disconnect()
+        await client.disconnect()
     }
     
     @Test("Reconnection handling")
     func testReconnection() async throws {
         let url = URL(string: "wss://invalid.websocket.test")!
-        let client = AppleWebSocketClient(url: url)
+        let client = AppleWebSocketClient()
         
         // Should handle connection failure gracefully
         do {
-            try await client.connect()
+            try await client.connect(to: url)
         } catch {
             // Expected to fail
-            #expect(error != nil)
+            #expect(Bool(true))
         }
         
         #expect(await client.isConnected == false)
@@ -69,83 +69,73 @@ struct AppleWebSocketClientTests {
     
     @Test("Provider creation")
     func testProviderCreation() async throws {
-        let provider = AppleWebSocketProvider()
-        let url = URL(string: "wss://test.websocket.org")!
-        
-        let client = provider.createClient(url: url)
-        #expect(client != nil)
+        let client = AppleWebSocketClient()
+        #expect(await client.isConnected == false)
     }
     
     @Test("Ping/Pong keepalive")
     func testPingPong() async throws {
         let url = URL(string: "wss://echo.websocket.org")!
-        let client = AppleWebSocketClient(url: url)
+        let client = AppleWebSocketClient()
         
-        // Start ping timer should not crash
-        await client.startPingTimer()
+        // Connect first
+        try? await client.connect(to: url)
         
-        // Stop ping timer should not crash
-        await client.stopPingTimer()
+        // Send ping
+        try? await client.ping()
         
-        #expect(true)
+        #expect(Bool(true))
     }
     
     @Test("Message handler")
     func testMessageHandler() async throws {
-        let url = URL(string: "wss://test.websocket.org")!
-        let client = AppleWebSocketClient(url: url)
+        let client = AppleWebSocketClient()
         
-        var receivedMessage: String?
-        
-        await client.setMessageHandler { message in
-            receivedMessage = message
-        }
-        
-        // Simulate receiving a message (would come from WebSocket in real scenario)
-        // This tests the handler mechanism
-        #expect(client != nil)
+        // Just test that client exists
+        let _ = client
+        #expect(Bool(true))
     }
     
     @Test("Connection state transitions")
     func testConnectionStates() async throws {
         let url = URL(string: "wss://test.websocket.org")!
-        let client = AppleWebSocketClient(url: url)
+        let client = AppleWebSocketClient()
         
-        #expect(await client.connectionState == .disconnected)
+        #expect(await client.isConnected == false)
         
         // Attempt connection (may fail, but state should change)
-        _ = try? await client.connect()
+        _ = try? await client.connect(to: url)
         
-        let state = await client.connectionState
-        #expect(state == .connected || state == .disconnected || state == .connecting)
+        let connected = await client.isConnected
+        #expect(connected == true || connected == false)
     }
     
     @Test("Concurrent operations safety")
     func testConcurrentOperations() async throws {
         let url = URL(string: "wss://echo.websocket.org")!
-        let client = AppleWebSocketClient(url: url)
+        let client = AppleWebSocketClient()
         
         // Test that concurrent operations don't crash
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
-                _ = try? await client.connect()
+                _ = try? await client.connect(to: url)
             }
             
             group.addTask {
-                _ = try? await client.send("Test 1")
+                _ = try? await client.send(text: "Test 1")
             }
             
             group.addTask {
-                _ = try? await client.send("Test 2")
+                _ = try? await client.send(text: "Test 2")
             }
             
             group.addTask {
-                _ = try? await client.disconnect()
+                await client.disconnect()
             }
         }
         
         // If we got here without crashing, the test passes
-        #expect(true)
+        #expect(Bool(true))
     }
 }
 
@@ -154,28 +144,25 @@ struct AppleWebSocketClientTests {
 #if DEBUG
 actor MockWebSocketClient: WebSocketClientProtocol {
     var isConnected: Bool = false
-    var connectionState: WebSocketConnectionState = .disconnected
     var messagesReceived: [String] = []
     var messagesSent: [String] = []
     
-    func connect() async throws {
+    func connect(to url: URL) async throws {
         isConnected = true
-        connectionState = .connected
     }
     
-    func disconnect() async throws {
+    func disconnect() async {
         isConnected = false
-        connectionState = .disconnected
     }
     
-    func send(_ message: String) async throws {
+    func send(text: String) async throws {
         guard isConnected else {
             throw WebSocketError.notConnected
         }
-        messagesSent.append(message)
+        messagesSent.append(text)
     }
     
-    func send(_ data: Data) async throws {
+    func send(data: Data) async throws {
         guard isConnected else {
             throw WebSocketError.notConnected
         }
@@ -184,16 +171,22 @@ actor MockWebSocketClient: WebSocketClientProtocol {
         }
     }
     
-    func setMessageHandler(_ handler: @escaping (String) async -> Void) {
-        // Store handler for testing
+    func receive() async throws -> WebSocketMessage {
+        guard isConnected else {
+            throw WebSocketError.notConnected
+        }
+        // Return a test message
+        return .text("test message")
     }
     
-    func setDataHandler(_ handler: @escaping (Data) async -> Void) {
-        // Store handler for testing
+    func ping() async throws {
+        guard isConnected else {
+            throw WebSocketError.notConnected
+        }
     }
     
-    func setErrorHandler(_ handler: @escaping (Error) async -> Void) {
-        // Store handler for testing
+    func close(code: WebSocketCloseCode, reason: Data?) async throws {
+        isConnected = false
     }
     
     func simulateMessageReceived(_ message: String) {

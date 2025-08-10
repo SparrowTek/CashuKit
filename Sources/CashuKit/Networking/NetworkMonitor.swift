@@ -400,7 +400,7 @@ public final class NetworkMonitor: ObservableObject {
 public extension NetworkMonitor {
     
     /// Create a circuit breaker configuration based on network status
-    struct CircuitBreakerConfig {
+    struct CircuitBreakerConfig: Sendable {
         let failureThreshold: Int
         let resetTimeout: TimeInterval
         let halfOpenMaxAttempts: Int
