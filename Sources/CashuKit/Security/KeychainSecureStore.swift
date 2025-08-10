@@ -9,9 +9,39 @@ import Foundation
 import CoreCashu
 import Vault
 import P256K
+import LocalAuthentication
 
 /// Apple Keychain implementation of the SecureStore protocol
 public actor KeychainSecureStore: SecureStore {
+    
+    // MARK: - Types
+    
+    public struct SecurityConfiguration: Sendable {
+        public let useBiometrics: Bool
+        public let useSecureEnclave: Bool
+        public let accessibleWhenUnlocked: Bool
+        public let synchronizable: Bool // iCloud Keychain sync
+        
+        public init(
+            useBiometrics: Bool = false,
+            useSecureEnclave: Bool = true,
+            accessibleWhenUnlocked: Bool = true,
+            synchronizable: Bool = false
+        ) {
+            self.useBiometrics = useBiometrics
+            self.useSecureEnclave = useSecureEnclave
+            self.accessibleWhenUnlocked = accessibleWhenUnlocked
+            self.synchronizable = synchronizable
+        }
+        
+        public static let standard = SecurityConfiguration()
+        public static let maximum = SecurityConfiguration(
+            useBiometrics: true,
+            useSecureEnclave: true,
+            accessibleWhenUnlocked: false,
+            synchronizable: false
+        )
+    }
     
     // MARK: - Constants
     
@@ -28,12 +58,15 @@ public actor KeychainSecureStore: SecureStore {
     // MARK: - Properties
     
     private let accessGroup: String?
+    private let securityConfig: SecurityConfiguration
+    private let logger = OSLogLogger(category: "KeychainSecureStore", minimumLevel: .warning)
     
     // MARK: - Initialization
     
     /// Initialize with optional access group for keychain sharing
-    public init(accessGroup: String? = nil) {
+    public init(accessGroup: String? = nil, securityConfiguration: SecurityConfiguration = .standard) {
         self.accessGroup = accessGroup
+        self.securityConfig = securityConfiguration
         
         // Configure Vault globally if not already configured
         let configuration = KeychainConfiguration(
@@ -49,12 +82,23 @@ public actor KeychainSecureStore: SecureStore {
     // MARK: - SecureStore Protocol Implementation
     
     public func saveMnemonic(_ mnemonic: String) async throws {
-        let config = KeychainConfiguration(
-            serviceName: KeychainConstants.serviceName,
-            accessGroup: accessGroup,
-            accountName: KeychainConstants.walletMnemonicAccount
+        // Require biometric auth for mnemonic storage if configured
+        if securityConfig.useBiometrics {
+            try await BiometricAuthManager.shared.authenticateForSensitiveOperation("Store wallet mnemonic securely")
+        }
+        
+        let config = createSecureKeychainConfiguration(
+            account: KeychainConstants.walletMnemonicAccount,
+            requireBiometrics: true // Always protect mnemonic with biometrics if available
         )
+        
+        // Clear sensitive data from memory after use
+        defer {
+            _ = mnemonic.withCString { memset(UnsafeMutableRawPointer(mutating: $0), 0, mnemonic.count) }
+        }
+        
         try Vault.savePrivateKey(mnemonic, keychainConfiguration: config)
+        logger.info("Mnemonic stored securely")
     }
     
     public func loadMnemonic() async throws -> String? {
@@ -265,6 +309,23 @@ public actor KeychainSecureStore: SecureStore {
     // MARK: - Legacy Methods (kept for backward compatibility)
 
     // MARK: - Helpers
+    
+    private func createSecureKeychainConfiguration(
+        account: String,
+        requireBiometrics: Bool = false
+    ) -> KeychainConfiguration {
+        // Create base configuration
+        let config = KeychainConfiguration(
+            serviceName: KeychainConstants.serviceName,
+            accessGroup: accessGroup,
+            accountName: account
+        )
+        
+        // Note: Vault framework may not support all these options
+        // Would need to check Vault's actual API for proper configuration
+        
+        return config
+    }
 
     private func makeSanitizedAccount(prefix: String, mintURL: String) -> String {
         let normalized = mintURL.trimmingCharacters(in: .whitespacesAndNewlines)

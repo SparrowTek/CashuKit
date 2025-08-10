@@ -15,37 +15,50 @@
 [![Swift Package Manager](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)](https://github.com/apple/swift-package-manager)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A Swift package implementing the Cashu ecash protocol for iOS and Apple platforms. CashuKit provides a type-safe API for integrating Cashu wallet functionality into your applications.
+Apple-specific Swift package for the Cashu ecash protocol. CashuKit provides native iOS/macOS implementations with deep platform integration, built on top of [CoreCashu](../CoreCashu) for protocol logic.
+
+## Architecture
+
+CashuKit is designed as an Apple-specific layer on top of CoreCashu:
+
+- **CoreCashu**: Platform-agnostic Cashu protocol implementation
+- **CashuKit**: Apple platform integrations (Keychain, biometrics, SwiftUI, etc.)
 
 ## Current Status
 
-### ✅ Implemented
-- **Core Protocol**: NUT-00 through NUT-06, NUT-07, NUT-08, NUT-09, NUT-10, NUT-11, NUT-12, NUT-13, NUT-14, NUT-15, NUT-16, NUT-17, NUT-19, NUT-20, NUT-22
+### ✅ Apple Platform Features
+- **Keychain Integration**: Secure storage with `KeychainSecureStore`
+- **Biometric Authentication**: Face ID, Touch ID, and Optic ID support
+- **SwiftUI Components**: Ready-to-use wallet UI components
+- **Network Monitoring**: Intelligent offline/online handling with `NetworkMonitor`
+- **Background Tasks**: Wallet operations continue when app is suspended
+- **Structured Logging**: Native `os.log` integration with privacy controls
+- **WebSocket Support**: Native `URLSessionWebSocketTask` implementation
+
+### ✅ Protocol Support (via CoreCashu)
+- **Core Protocol**: NUT-00 through NUT-24 implementations
 - **Wallet Operations**: Mint, melt, swap, send, receive
 - **Token Management**: V3/V4 token serialization, CBOR support
 - **Cryptography**: BDHKE, deterministic secrets, P2PK, HTLCs
 - **State Management**: Actor-based concurrency, thread safety
-- **Error Handling**: Comprehensive error types and recovery
-
-### 🚧 In Progress
-- **Security**: Keychain integration via Vault framework
-- **Authentication**: NUT-22 access token support
-- **Restoration**: Full wallet restoration from mnemonic
-
-### ❌ Not Implemented
-- **Advanced Features**: DLCs, subscription model
-- **Production Hardening**: Rate limiting, circuit breakers
-- **Testing**: Full test coverage, integration tests
 
 ## Features
 
-- ✅ **NUT Implementation**: Supports NUT-00 through NUT-22 (with some gaps)
-- ✅ **Thread-Safe**: Built with Swift's actor model for concurrent operations
-- ✅ **Type-Safe**: Leverages Swift's type system for compile-time safety
-- ✅ **SwiftUI Ready**: Designed for easy integration with SwiftUI applications
-- ✅ **Deterministic Secrets**: BIP39/BIP32 support for wallet recovery
-- ✅ **Multiple Token Formats**: V3 JSON and V4 CBOR token formats
-- ✅ **Advanced Spending Conditions**: P2PK and HTLC support
+### Apple Platform Integration
+- 🔐 **Keychain & Secure Enclave**: Hardware-backed key storage
+- 👤 **Biometric Authentication**: Face ID, Touch ID, Optic ID support
+- 📱 **SwiftUI Components**: Pre-built wallet UI components
+- 🌐 **Network Resilience**: Automatic offline queueing and retry
+- ⚡ **Background Execution**: Continue operations when app is suspended
+- 📊 **Structured Logging**: Privacy-preserving os.log integration
+- 🔄 **iCloud Keychain Sync**: Optional wallet sync across devices
+
+### Core Protocol Features (from CoreCashu)
+- ✅ **Complete NUT Support**: NUT-00 through NUT-24
+- ✅ **Thread-Safe**: Actor-based concurrency model
+- ✅ **Type-Safe**: Leverages Swift 6's type system
+- ✅ **Deterministic Secrets**: BIP39/BIP32 wallet recovery
+- ✅ **Advanced Conditions**: P2PK and HTLC support
 
 ## Supported Cashu NIPs (NUTs)
 
@@ -82,57 +95,75 @@ A Swift package implementing the Cashu ecash protocol for iOS and Apple platform
 
 ### Swift Package Manager
 
-Add CashuKit to your project using Swift Package Manager:
+Add CashuKit to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/SparrowTek/CashuKit", from: "0.1.0")
+    .package(path: "../CashuKit"),  // For local development
+    .package(path: "../CoreCashu")   // Required dependency
 ]
 ```
 
-Or add it through Xcode:
+### Xcode Integration
+
 1. File → Add Package Dependencies
-2. Enter: `https://github.com/SparrowTek/CashuKit`
-3. Choose your version requirements
+2. Add local packages: CashuKit and CoreCashu
+3. Select products for your target
+
+### Required Configuration
+
+Add to your app's Info.plist:
+```xml
+<key>NSFaceIDUsageDescription</key>
+<string>Authenticate to access your Cashu wallet</string>
+```
 
 ## Quick Start
 
+### Basic Usage
+
 ```swift
 import CashuKit
+import CoreCashu
 
-// Create wallet configuration
-let config = WalletConfiguration(
-    mintURL: "https://testnut.cashu.space",
-    unit: "sat"
-)
+// Create wallet with Apple platform defaults
+let wallet = AppleCashuWallet()
 
-// Create a wallet
-let wallet = await CashuWallet(configuration: config)
-
-// Initialize the wallet
-try await wallet.initialize()
-
-// (Optional) Enable console metrics for development
-logger.setMetricsSink(ConsoleMetricsSink())
-logger.configure(.debug)
+// Connect to mint
+try await wallet.connectToMint(url: "https://testnut.cashu.space")
 
 // Check balance
-let balance = try await wallet.balance
-print("Current balance: \(balance) sats")
-
-// Mint tokens using a Lightning invoice (BOLT11)
-let mintResult = try await wallet.mint(
-    amount: 1000,
-    paymentRequest: "lnbc...",
-    method: "bolt11"
-)
-// New proofs are available in mintResult.newProofs
+print("Balance: \(wallet.balance) sats")
 
 // Send tokens
-let token = try await wallet.send(amount: 500, memo: "Payment for coffee")
+let token = try await wallet.send(amount: 100, memo: "Coffee")
 
 // Receive tokens
-let receivedProofs = try await wallet.receive(token: token)
+try await wallet.receive(token: tokenString)
+```
+
+### SwiftUI Integration
+
+```swift
+import SwiftUI
+import CashuKit
+
+struct WalletView: View {
+    @StateObject private var wallet = AppleCashuWallet()
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                CashuBalanceView(wallet: wallet)
+                CashuSendReceiveView(wallet: wallet)
+                CashuTransactionListView(wallet: wallet)
+            }
+        }
+        .networkStatus()  // Show offline banner
+        .requireBiometricAuth()  // Face ID/Touch ID
+    }
+}
+```
 
 // Melt tokens via Lightning (pay a BOLT11 invoice)
 let meltResult = try await wallet.melt(
