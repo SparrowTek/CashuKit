@@ -51,7 +51,7 @@ CashuKit is the Apple-native layer built on top of [CoreCashu](https://github.co
 - **Structured Logging**: Privacy-preserving os.log integration
 - **SwiftUI Components**: Pre-built, customizable wallet UI
 
-### ⚡ Protocol Features (via )
+### ⚡ Protocol Features (via CoreCashu)
 - Complete implementation of Cashu NIPs (NUT-00 through NUT-22)
 - Lightning Network integration (mint & melt)
 - Deterministic secrets with BIP39/BIP32
