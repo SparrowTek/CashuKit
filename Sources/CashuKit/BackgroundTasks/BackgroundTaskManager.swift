@@ -41,6 +41,10 @@ public actor BackgroundTaskManager {
         public var isExecuting: Bool = false
         public var completedAt: Date?
         public var error: String?
+        
+        public enum CodingKeys: String, CodingKey {
+            case type, data, createdAt, isExecuting, completedAt, error
+        }
     }
     
     public enum BackgroundError: LocalizedError {
@@ -68,12 +72,12 @@ public actor BackgroundTaskManager {
     
     // MARK: - Properties
     
-    public static let shared = BackgroundTaskManager()
-    
     private var registeredTasks: Set<TaskType> = []
     private var pendingOperations: [PendingOperation] = []
     private var activeURLSession: URLSession?
     private let logger: OSLogLogger
+    private let urlSessionDelegate: URLSessionDelegateHandler
+    private let networkMonitor: NetworkMonitor
     var backgroundCompletionHandlers: [String: @Sendable () -> Void] = [:]
     
     // Background URL Session
@@ -84,13 +88,16 @@ public actor BackgroundTaskManager {
         config.shouldUseExtendedBackgroundIdleMode = true
         config.allowsCellularAccess = UserDefaults.standard.bool(forKey: "AllowCellularData")
         
-        return URLSession(configuration: config, delegate: URLSessionDelegateHandler.shared, delegateQueue: nil)
+        return URLSession(configuration: config, delegate: urlSessionDelegate, delegateQueue: nil)
     }()
     
     // MARK: - Initialization
     
-    private init() {
+    public init(networkMonitor: NetworkMonitor) {
         self.logger = OSLogLogger(category: "BackgroundTasks", minimumLevel: .info)
+        self.networkMonitor = networkMonitor
+        self.urlSessionDelegate = URLSessionDelegateHandler(backgroundTaskManager: nil)
+        self.urlSessionDelegate.backgroundTaskManager = self
         Task {
             await loadPendingOperations()
         }
@@ -232,7 +239,7 @@ public actor BackgroundTaskManager {
         let task = backgroundURLSession.downloadTask(with: url)
         
         // Store completion handler
-        URLSessionDelegateHandler.shared.setCompletionHandler(
+        urlSessionDelegate.setCompletionHandler(
             for: task.taskIdentifier,
             handler: completion
         )
@@ -327,7 +334,7 @@ public actor BackgroundTaskManager {
         logger.info("Executing operation: \(operation.type)")
         
         // Check network availability
-        guard await NetworkMonitor.shared.isConnected else {
+        guard await networkMonitor.isConnected else {
             throw BackgroundError.networkUnavailable
         }
         
@@ -398,10 +405,15 @@ public actor BackgroundTaskManager {
 
 final class URLSessionDelegateHandler: NSObject, URLSessionDelegate, URLSessionDownloadDelegate, @unchecked Sendable {
     
-    static let shared = URLSessionDelegateHandler()
+    weak var backgroundTaskManager: BackgroundTaskManager?
     
     private var completionHandlers: [Int: (Result<Data, any Error>) -> Void] = [:]
     private let logger = OSLogLogger(category: "URLSessionDelegate", minimumLevel: .info)
+    
+    init(backgroundTaskManager: BackgroundTaskManager?) {
+        self.backgroundTaskManager = backgroundTaskManager
+        super.init()
+    }
     
     func setCompletionHandler(for taskIdentifier: Int, handler: @escaping (Result<Data, any Error>) -> Void) {
         completionHandlers[taskIdentifier] = handler
@@ -413,11 +425,12 @@ final class URLSessionDelegateHandler: NSObject, URLSessionDelegate, URLSessionD
         logger.info("URLSession finished events for background session")
         
         // Call stored completion handler if app was relaunched
-        Task {
+        Task { [weak self] in
             if let sessionIdentifier = session.configuration.identifier,
-               let completionHandler = await BackgroundTaskManager.shared.backgroundCompletionHandlers[sessionIdentifier] {
+               let manager = self?.backgroundTaskManager,
+               let completionHandler = await manager.backgroundCompletionHandlers[sessionIdentifier] {
                 completionHandler()
-                await BackgroundTaskManager.shared.clearCompletionHandler(for: sessionIdentifier)
+                await manager.clearCompletionHandler(for: sessionIdentifier)
             }
         }
     }
@@ -515,38 +528,6 @@ public extension BackgroundTaskManager {
     }
 }
 #endif
-
-// MARK: - SwiftUI Integration
-
-import SwiftUI
-
-/// View modifier to handle background task scheduling
-public struct BackgroundTaskModifier: ViewModifier {
-    let taskType: BackgroundTaskManager.TaskType
-    
-    public func body(content: Content) -> some View {
-        content
-            .onAppear {
-                let type = taskType
-                Task {
-                    try? await BackgroundTaskManager.shared.scheduleBackgroundTask(type)
-                }
-            }
-            .onDisappear {
-                let type = taskType
-                Task {
-                    await BackgroundTaskManager.shared.cancelBackgroundTask(type)
-                }
-            }
-    }
-}
-
-public extension View {
-    /// Schedule a background task when this view appears
-    func scheduleBackgroundTask(_ type: BackgroundTaskManager.TaskType) -> some View {
-        modifier(BackgroundTaskModifier(taskType: type))
-    }
-}
 
 // MARK: - Testing Support
 

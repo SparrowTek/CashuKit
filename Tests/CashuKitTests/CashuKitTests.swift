@@ -37,22 +37,23 @@ struct CashuKitTests {
         #expect(maxConfig.synchronizable == false)
     }
     
-    @Test("Network monitor singleton")
+    @Test("Network monitor instances")
     func testNetworkMonitor() async {
-        let monitor1 = await NetworkMonitor.shared
-        let monitor2 = await NetworkMonitor.shared
+        let monitor1 = await NetworkMonitor()
+        let monitor2 = await NetworkMonitor()
         
-        // Should be the same instance (singleton)
-        #expect(monitor1 === monitor2)
+        // Should be different instances
+        #expect(monitor1 !== monitor2)
     }
     
-    @Test("Background task manager singleton") 
+    @Test("Background task manager instances") 
     func testBackgroundTaskManager() async {
-        let manager1 = BackgroundTaskManager.shared
-        let manager2 = BackgroundTaskManager.shared
+        let networkMonitor = await NetworkMonitor()
+        let manager1 = BackgroundTaskManager(networkMonitor: networkMonitor)
+        let manager2 = BackgroundTaskManager(networkMonitor: networkMonitor)
         
-        // Should be the same instance (singleton)
-        #expect(manager1 === manager2)
+        // Should be different instances
+        #expect(manager1 !== manager2)
     }
     
     @Test("Biometric auth manager singleton")

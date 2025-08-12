@@ -35,7 +35,7 @@ struct AppleIntegrationTests {
     
     @Test("Network monitor integration")
     func testNetworkMonitorIntegration() async throws {
-        let monitor = await NetworkMonitor.shared
+        let monitor = await NetworkMonitor()
         
         // Start monitoring
         await monitor.startMonitoring()
@@ -50,7 +50,8 @@ struct AppleIntegrationTests {
     
     @Test("Background task manager integration")
     func testBackgroundTaskIntegration() async throws {
-        let manager = BackgroundTaskManager.shared
+        let networkMonitor = await NetworkMonitor()
+        let manager = BackgroundTaskManager(networkMonitor: networkMonitor)
         
         // Register tasks (won't actually register in test environment)
         await manager.registerBackgroundTasks()
@@ -132,7 +133,7 @@ struct AppleIntegrationTests {
     
     @Test("Network quality assessment")
     func testNetworkQualityAssessment() async throws {
-        let monitor = await NetworkMonitor.shared
+        let monitor = await NetworkMonitor()
         
         let status = await monitor.currentStatus
         let quality = status.qualityScore
@@ -146,7 +147,7 @@ struct AppleIntegrationTests {
     
     @Test("Queued operations with network monitor")
     func testQueuedOperations() async throws {
-        let monitor = await NetworkMonitor.shared
+        let monitor = await NetworkMonitor()
         
         // Queue an operation
         await monitor.queueOperation(

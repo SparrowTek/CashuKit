@@ -234,18 +234,22 @@ struct ContentView: View {
 
 ```swift
 // In AppDelegate or App
-BackgroundTaskManager.shared.registerBackgroundTasks()
-BackgroundTaskManager.shared.setupLifecycleObservers()
+let networkMonitor = NetworkMonitor()
+let backgroundTaskManager = BackgroundTaskManager(networkMonitor: networkMonitor)
+backgroundTaskManager.registerBackgroundTasks()
+backgroundTaskManager.setupLifecycleObservers()
 
 // Schedule specific tasks
-try await BackgroundTaskManager.shared.scheduleBackgroundTask(.balanceRefresh)
+try await backgroundTaskManager.scheduleBackgroundTask(.balanceRefresh)
 ```
 
 ### Background URL Sessions
 
 ```swift
 // Download with background support
-let task = BackgroundTaskManager.shared.startBackgroundDownload(
+let networkMonitor = NetworkMonitor()
+let backgroundTaskManager = BackgroundTaskManager(networkMonitor: networkMonitor)
+let task = backgroundTaskManager.startBackgroundDownload(
     from: mintURL
 ) { result in
     switch result {
@@ -262,15 +266,18 @@ let task = BackgroundTaskManager.shared.startBackgroundDownload(
 ```swift
 // Automatically handled, but can customize:
 class AppDelegate: NSObject, UIApplicationDelegate {
+    let networkMonitor = NetworkMonitor()
+    lazy var backgroundTaskManager = BackgroundTaskManager(networkMonitor: networkMonitor)
+    
     func applicationDidEnterBackground(_ application: UIApplication) {
         Task {
-            await BackgroundTaskManager.shared.handleEnterBackground()
+            await backgroundTaskManager.handleEnterBackground()
         }
     }
     
     func applicationWillEnterForeground(_ application: UIApplication) {
         Task {
-            await BackgroundTaskManager.shared.handleEnterForeground()
+            await backgroundTaskManager.handleEnterForeground()
         }
     }
 }
@@ -565,11 +572,14 @@ let logger = OSLogLogger(category: "Debug", minimumLevel: .debug)
 
 // Monitor background tasks
 #if DEBUG
-BackgroundTaskManager.shared.simulateBackgroundTask(.balanceRefresh)
+let networkMonitor = NetworkMonitor()
+let backgroundTaskManager = BackgroundTaskManager(networkMonitor: networkMonitor)
+backgroundTaskManager.simulateBackgroundTask(.balanceRefresh)
 #endif
 
 // Test network conditions
-NetworkMonitor.shared.simulateOffline()
+let networkMonitor = NetworkMonitor()
+networkMonitor.simulateOffline()
 ```
 
 ## Best Practices

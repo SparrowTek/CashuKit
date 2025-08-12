@@ -101,8 +101,6 @@ public final class NetworkMonitor: ObservableObject {
     
     // MARK: - Properties
     
-    public static let shared = NetworkMonitor()
-    
     @Published public private(set) var currentStatus: NetworkStatus
     @Published public private(set) var isConnected: Bool = false
     @Published public private(set) var connectionType: ConnectionType = .none
@@ -124,7 +122,7 @@ public final class NetworkMonitor: ObservableObject {
     
     // MARK: - Initialization
     
-    private init() {
+    public init() {
         self.monitor = NWPathMonitor()
         self.queue = DispatchQueue(label: "com.cashukit.networkmonitor", qos: .utility)
         self.logger = OSLogLogger(category: "NetworkMonitor", minimumLevel: .info)
@@ -459,14 +457,18 @@ import SwiftUI
 
 /// View modifier to show network status
 public struct NetworkStatusModifier: ViewModifier {
-    @ObservedObject private var monitor = NetworkMonitor.shared
+    @ObservedObject private var monitor: NetworkMonitor
     @State private var showBanner = false
+    
+    public init(monitor: NetworkMonitor) {
+        self.monitor = monitor
+    }
     
     public func body(content: Content) -> some View {
         content
             .overlay(alignment: .top) {
                 if !monitor.isConnected && showBanner {
-                    NetworkStatusBanner()
+                    NetworkStatusBanner(monitor: monitor)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
@@ -479,7 +481,11 @@ public struct NetworkStatusModifier: ViewModifier {
 }
 
 struct NetworkStatusBanner: View {
-    @ObservedObject private var monitor = NetworkMonitor.shared
+    @ObservedObject private var monitor: NetworkMonitor
+    
+    init(monitor: NetworkMonitor) {
+        self.monitor = monitor
+    }
     
     var body: some View {
         HStack {
@@ -503,8 +509,8 @@ struct NetworkStatusBanner: View {
 
 public extension View {
     /// Monitor network connectivity and show status
-    func networkStatus() -> some View {
-        modifier(NetworkStatusModifier())
+    func networkStatus(monitor: NetworkMonitor) -> some View {
+        modifier(NetworkStatusModifier(monitor: monitor))
     }
 }
 
