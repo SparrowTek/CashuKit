@@ -15,241 +15,367 @@
 [![Swift Package Manager](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)](https://github.com/apple/swift-package-manager)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A Swift package implementing the Cashu ecash protocol for iOS and Apple platforms. CashuKit provides a type-safe API for integrating Cashu wallet functionality into your applications.
+Native Apple platform client library for the Cashu ecash protocol. CashuKit provides deep integration with iOS, macOS, and other Apple platforms, leveraging system frameworks for security, performance, and user experience.
 
-## Current Status
+## Overview
 
-### ✅ Implemented
-- **Core Protocol**: NUT-00 through NUT-06, NUT-07, NUT-08, NUT-09, NUT-10, NUT-11, NUT-12, NUT-13, NUT-14, NUT-15, NUT-16, NUT-17, NUT-19, NUT-20, NUT-22
-- **Wallet Operations**: Mint, melt, swap, send, receive
-- **Token Management**: V3/V4 token serialization, CBOR support
-- **Cryptography**: BDHKE, deterministic secrets, P2PK, HTLCs
-- **State Management**: Actor-based concurrency, thread safety
-- **Error Handling**: Comprehensive error types and recovery
+CashuKit is the Apple-native layer built on top of [CoreCashu](../CoreCashu), providing:
+- **Deep Platform Integration**: Keychain, Face ID, iCloud sync, and more
+- **Native UI Components**: Ready-to-use SwiftUI views for wallet functionality
+- **Background Processing**: Continue wallet operations when your app is suspended
+- **Network Resilience**: Intelligent offline handling with automatic retry
+- **Privacy-First**: Native logging with sensitive data redaction
 
-### 🚧 In Progress
-- **Security**: Keychain integration via Vault framework
-- **Authentication**: NUT-22 access token support
-- **Restoration**: Full wallet restoration from mnemonic
+## Architecture
 
-### ❌ Not Implemented
-- **Advanced Features**: DLCs, subscription model
-- **Production Hardening**: Rate limiting, circuit breakers
-- **Testing**: Full test coverage, integration tests
+```
+┌─────────────────────────────────────────┐
+│           Your iOS/macOS App            │
+├─────────────────────────────────────────┤
+│              CashuKit                   │  ← You are here
+│  (Apple Platform Integration Layer)     │
+├─────────────────────────────────────────┤
+│              CoreCashu                  │
+│    (Platform-Agnostic Protocol)         │
+└─────────────────────────────────────────┘
+```
 
-## Features
+## Key Features
 
-- ✅ **NUT Implementation**: Supports NUT-00 through NUT-22 (with some gaps)
-- ✅ **Thread-Safe**: Built with Swift's actor model for concurrent operations
-- ✅ **Type-Safe**: Leverages Swift's type system for compile-time safety
-- ✅ **SwiftUI Ready**: Designed for easy integration with SwiftUI applications
-- ✅ **Deterministic Secrets**: BIP39/BIP32 support for wallet recovery
-- ✅ **Multiple Token Formats**: V3 JSON and V4 CBOR token formats
-- ✅ **Advanced Spending Conditions**: P2PK and HTLC support
+### 🍎 Apple Platform Integration
+- **Keychain & Secure Enclave**: Hardware-backed key storage with biometric protection
+- **Face ID / Touch ID / Optic ID**: Seamless biometric authentication
+- **iCloud Keychain Sync**: Optional cross-device wallet synchronization
+- **Background Execution**: Continue operations when app is backgrounded
+- **Network Monitoring**: Intelligent offline queueing and retry logic
+- **Structured Logging**: Privacy-preserving os.log integration
+- **SwiftUI Components**: Pre-built, customizable wallet UI
 
-## Supported Cashu NIPs (NUTs)
-
-### Core Protocol
-- **NUT-00**: Notation, Terminology and Types
-- **NUT-01**: Mint public key exchange
-- **NUT-02**: Keysets and keyset IDs
-- **NUT-03**: Swap tokens (exchange proofs)
-- **NUT-04**: Mint tokens
-- **NUT-05**: Melting tokens
-- **NUT-06**: Mint information
-
-### Token Formats
-- **NUT-00**: V3 Token Format (JSON-based)
-- **NUT-00**: V4 Token Format (CBOR-based)
-
-### Advanced Features
-- **NUT-07**: Token state check
-- **NUT-08**: Lightning fee return
-- **NUT-09**: Wallet restore from seed
-- **NUT-10**: Spending conditions (P2PK)
-- **NUT-11**: Pay-to-Public-Key (P2PK)
-- **NUT-12**: Offline ecash signature validation (DLEQ)
-- **NUT-13**: Deterministic secrets (BIP39/BIP32)
-- **NUT-14**: Hash Time Locked Contracts (HTLCs)
-- **NUT-15**: Multi-path payments (MPP)
-- **NUT-16**: Animated QR codes
-- **NUT-17**: WebSocket subscriptions
-- **NUT-19**: Mint Management
-- **NUT-20**: Bitcoin On-Chain Support
-- **NUT-22**: Non-custodial wallet authentication
+### ⚡ Protocol Features (via CoreCashu)
+- Complete implementation of Cashu NIPs (NUT-00 through NUT-22)
+- Lightning Network integration (mint & melt)
+- Deterministic secrets with BIP39/BIP32
+- Advanced spending conditions (P2PK, HTLCs)
+- Multi-path payments
+- WebSocket subscriptions
+- Token state management
 
 ## Installation
 
+### Requirements
+- iOS 17.0+ / macOS 15.0+ / tvOS 17.0+ / watchOS 10.0+ / visionOS 1.0+
+- Xcode 16.0+
+- Swift 6.0+
+
 ### Swift Package Manager
 
-Add CashuKit to your project using Swift Package Manager:
-
+Add to your `Package.swift`:
 ```swift
 dependencies: [
-    .package(url: "https://github.com/SparrowTek/CashuKit", from: "0.1.0")
+    .package(url: "https://github.com/yourusername/CashuKit", from: "0.1.0")
 ]
 ```
 
-Or add it through Xcode:
+Or in Xcode:
 1. File → Add Package Dependencies
-2. Enter: `https://github.com/SparrowTek/CashuKit`
-3. Choose your version requirements
+2. Enter the repository URL
+3. Select CashuKit product
+
+### Configuration
+
+Add to your app's `Info.plist`:
+```xml
+<!-- Required for biometric authentication -->
+<key>NSFaceIDUsageDescription</key>
+<string>Authenticate to access your Cashu wallet</string>
+
+<!-- Optional: For background tasks -->
+<key>UIBackgroundModes</key>
+<array>
+    <string>fetch</string>
+    <string>processing</string>
+</array>
+
+<!-- Optional: Register background task identifiers -->
+<key>BGTaskSchedulerPermittedIdentifiers</key>
+<array>
+    <string>com.cashukit.balance.refresh</string>
+    <string>com.cashukit.proof.validation</string>
+    <string>com.cashukit.token.sync</string>
+    <string>com.cashukit.mint.health</string>
+</array>
+```
 
 ## Quick Start
 
+### Basic Wallet Setup
+
 ```swift
 import CashuKit
+import CoreCashu
 
-// Create wallet configuration
-let config = WalletConfiguration(
-    mintURL: "https://testnut.cashu.space",
-    unit: "sat"
-)
+// Create wallet with Apple platform defaults
+let wallet = await AppleCashuWallet()
 
-// Create a wallet
-let wallet = await CashuWallet(configuration: config)
-
-// Initialize the wallet
-try await wallet.initialize()
-
-// (Optional) Enable console metrics for development
-logger.setMetricsSink(ConsoleMetricsSink())
-logger.configure(.debug)
+// Connect to a mint
+try await wallet.connectToMint(url: "https://testnut.cashu.space")
 
 // Check balance
-let balance = try await wallet.balance
-print("Current balance: \(balance) sats")
+let balance = await wallet.balance
+print("Balance: \(balance) sats")
 
-// Mint tokens using a Lightning invoice (BOLT11)
-let mintResult = try await wallet.mint(
-    amount: 1000,
-    paymentRequest: "lnbc...",
-    method: "bolt11"
-)
-// New proofs are available in mintResult.newProofs
+// Send ecash
+let token = try await wallet.send(amount: 100, memo: "Coffee payment")
+print("Token: \(token)")
 
-// Send tokens
-let token = try await wallet.send(amount: 500, memo: "Payment for coffee")
-
-// Receive tokens
-let receivedProofs = try await wallet.receive(token: token)
-
-// Melt tokens via Lightning (pay a BOLT11 invoice)
-let meltResult = try await wallet.melt(
-    paymentRequest: "lnbc5u1p3...",
-    method: "bolt11"
-)
+// Receive ecash
+try await wallet.receive(token: receivedTokenString)
 ```
 
-### Metrics and Logging
-
-- The logger supports categories and levels with sensitive-field redaction by default.
-- Metrics are optional via `MetricsSink`. For development:
+### SwiftUI Integration
 
 ```swift
-logger.setMetricsSink(ConsoleMetricsSink())
-logger.metricIncrement("cashukit.example.counter", by: 1, tags: ["env": "dev"]) // optional manual metric
-```
+import SwiftUI
+import CashuKit
 
-Production apps should provide a custom sink that forwards to your telemetry (e.g., StatsD, OpenTelemetry).
-
-## Advanced Features
-
-### Deterministic Secrets (NUT-13)
-
-```swift
-// Create wallet with mnemonic for backup/restore
-let mnemonic = try CashuWallet.generateMnemonic()
-let wallet = try await CashuWallet(
-    configuration: config,
-    mnemonic: mnemonic
-)
-
-// Restore wallet from mnemonic
-let restoredWallet = try await CashuWallet(
-    configuration: config,
-    mnemonic: savedMnemonic
-)
-```
-
-### Spending Conditions (NUT-10/11)
-
-Support exists in lower-level services and models; high-level wallet helpers are under development. Refer to NUT-10/11 modules and tests for current usage patterns.
-
-### HTLC Support (NUT-14)
-
-HTLC primitives are implemented in the model layer. High-level wallet flows are planned; see NUT-14 tests for examples.
-
-### Token State Management (NUT-07)
-
-```swift
-// Check proof states
-let batch = try await wallet.checkProofStates(myProofs)
-for result in batch.results {
-    print("Proof \(try result.proof.calculateY()): \(result.stateInfo.state)")
+@main
+struct MyWalletApp: App {
+    @StateObject private var wallet = AppleCashuWallet()
+    @StateObject private var networkMonitor = NetworkMonitor()
+    
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(wallet)
+                .networkStatus(monitor: networkMonitor)
+                .requireBiometricAuth()
+        }
+    }
 }
 
-// Restore from seed (NUT-13)
-let restoredBalance = try await wallet.restoreFromSeed(batchSize: 100) { progress in
-    // handle progress updates
+struct ContentView: View {
+    @EnvironmentObject var wallet: AppleCashuWallet
+    
+    var body: some View {
+        NavigationStack {
+            VStack {
+                // Pre-built UI components
+                CashuBalanceView(wallet: wallet)
+                CashuSendReceiveView(wallet: wallet)
+                CashuTransactionListView(wallet: wallet)
+                MintSelectionView(wallet: wallet)
+            }
+            .navigationTitle("My Cashu Wallet")
+        }
+    }
 }
 ```
+
+### Secure Storage Configuration
+
+```swift
+// Default configuration (recommended)
+let wallet = await AppleCashuWallet()
+
+// Custom security configuration
+let secureStore = KeychainSecureStore(
+    accessGroup: "group.com.yourapp.cashu",
+    securityConfiguration: .init(
+        useBiometrics: true,
+        useSecureEnclave: true,
+        accessibleWhenUnlocked: false,
+        synchronizable: true  // Enable iCloud sync
+    )
+)
+
+let customWallet = await AppleCashuWallet(secureStore: secureStore)
+```
+
+### Background Task Management
+
+```swift
+// In your AppDelegate or App initialization
+let networkMonitor = NetworkMonitor()
+let backgroundTaskManager = BackgroundTaskManager(networkMonitor: networkMonitor)
+
+// Register background tasks
+backgroundTaskManager.registerBackgroundTasks()
+backgroundTaskManager.setupLifecycleObservers()
+
+// Schedule periodic balance refresh
+try await backgroundTaskManager.scheduleBackgroundTask(.balanceRefresh)
+
+// Queue operations for background execution
+await backgroundTaskManager.addPendingOperation(
+    type: "token_sync",
+    data: syncData
+)
+```
+
+### Network Monitoring
+
+```swift
+let networkMonitor = NetworkMonitor()
+
+// Start monitoring
+await networkMonitor.startMonitoring()
+
+// React to network changes
+for await status in networkMonitor.$currentStatus.values {
+    if status.isConnected {
+        // Process queued operations
+        await networkMonitor.processQueuedOperations()
+    }
+}
+
+// Queue operations when offline
+await networkMonitor.queueOperation(
+    type: .sendToken,
+    data: tokenData,
+    priority: .high
+)
+```
+
+## Advanced Usage
+
+### Wallet Restoration
+
+```swift
+// Generate new mnemonic
+let mnemonic = try Mnemonic.generate()
+print("Save these words: \(mnemonic.words.joined(separator: " "))")
+
+// Create wallet from mnemonic
+let wallet = try await AppleCashuWallet(mnemonic: mnemonic)
+
+// Restore wallet balance from mint
+let restoredBalance = try await wallet.restoreFromMint()
+print("Restored \(restoredBalance) sats")
+```
+
+### Biometric Authentication
+
+```swift
+let bioManager = BiometricAuthManager.shared
+
+// Check availability
+await bioManager.checkBiometricAvailability()
+
+if await bioManager.isAvailable {
+    // Authenticate user
+    let authenticated = try await bioManager.authenticateUser(
+        reason: "Access your Cashu wallet"
+    )
+    
+    if authenticated {
+        // Store sensitive data with biometric protection
+        try await bioManager.storeWithBiometricProtection(
+            data: seedData,
+            account: "wallet_seed",
+            service: "com.yourapp.cashu"
+        )
+    }
+}
+```
+
+### Custom Logging
+
+```swift
+// Configure logging
+let logger = OSLogLogger(
+    category: "CashuWallet",
+    minimumLevel: .debug
+)
+
+// Set custom metrics sink for production
+logger.setMetricsSink(MyTelemetryAdapter())
+
+// Sensitive data is automatically redacted
+logger.info("Sending \(amount) sats", metadata: [
+    "mint": mintURL,
+    "token": token  // Automatically redacted
+])
+```
+
+### WebSocket Subscriptions
+
+```swift
+// Create WebSocket client
+let wsClient = AppleWebSocketClient(
+    url: "wss://mint.example.com/v1/ws",
+    logger: logger
+)
+
+// Subscribe to mint updates
+await wsClient.connect()
+await wsClient.subscribe(to: .proofStateUpdates) { update in
+    // Handle real-time updates
+}
+```
+
+## UI Components
+
+CashuKit provides ready-to-use SwiftUI components:
+
+- **CashuBalanceView**: Displays wallet balance with automatic updates
+- **CashuSendReceiveView**: Token sending and receiving interface
+- **CashuTransactionListView**: Transaction history with search and filters
+- **MintSelectionView**: Mint management and selection
+- **NetworkStatusModifier**: Offline/online status banner
+
+All components are customizable through view modifiers and environment values.
 
 ## Security Considerations
 
-⚠️ **This library is NOT security audited and should NOT be used in production.**
+⚠️ **This library has NOT been security audited and should NOT be used in production.**
 
-Current security implementation:
-- Uses system-provided secure random generation
-- Implements constant-time cryptographic operations via P256K
-- Validates all external inputs
-- Uses actor model for thread safety
+### Current Security Implementation
+- Hardware-backed key storage via Secure Enclave
+- Biometric authentication for sensitive operations
+- Automatic sensitive data redaction in logs
+- Secure random generation via system APIs
+- Constant-time cryptographic operations
+- Actor-based concurrency for thread safety
 
-Missing security features:
-- Secure key storage (Keychain integration in progress)
+### Missing Security Features
+- Third-party security audit
 - Rate limiting for mint requests
 - Circuit breakers for network failures
-- Comprehensive input validation
-- Security audit
-
-## Platform Support
-
-- iOS 17.0+
-- macOS 14.0+
-- tvOS 17.0+
-- watchOS 10.0+
-- visionOS 2.0+
-
-## Dependencies
-
-- [swift-secp256k1](https://github.com/21-DOT-DEV/swift-secp256k1) - Elliptic curve cryptography
-- [BigInt](https://github.com/attaswift/BigInt) - Large number arithmetic
-- [BitcoinDevKit](https://github.com/bitcoindevkit/bdk-swift) - Bitcoin functionality
-- [CryptoSwift](https://github.com/krzyzanowskim/CryptoSwift) - Additional cryptographic functions
-- [SwiftCBOR](https://github.com/valpackett/SwiftCBOR) - CBOR encoding/decoding
+- Certificate pinning for mint connections
+- Anti-tampering measures
 
 ## Testing
 
-Run tests using Swift Package Manager:
-
 ```bash
+# Run all tests
 swift test
-```
 
-Or in Xcode:
-- ⌘+U to run all tests
+# Run specific test suite
+swift test --filter CashuKitTests
+
+# Run with coverage
+swift test --enable-code-coverage
+```
 
 ## Contributing
 
-We welcome contributions! However, please note that this library is not yet production ready. Areas that need work:
+We welcome contributions! Areas that need work:
 
-1. Security hardening and audit
-2. Complete test coverage
-3. Performance optimization
-4. Documentation improvements
-5. Missing NUT implementations
+1. **Security**: Hardening and audit preparation
+2. **Testing**: Increase test coverage
+3. **Documentation**: API documentation and guides
+4. **Performance**: Optimization for large wallets
+5. **UI Components**: Additional SwiftUI views
 
-Please open an issue to discuss major changes before submitting a PR.
+Please open an issue before starting major work.
+
+## Dependencies
+
+- [CoreCashu](../CoreCashu) - Platform-agnostic Cashu protocol
+- [swift-secp256k1](https://github.com/21-DOT-DEV/swift-secp256k1) - Elliptic curve cryptography
+- [BigInt](https://github.com/attaswift/BigInt) - Arbitrary precision arithmetic
+- [BitcoinDevKit](https://github.com/bitcoindevkit/bdk-swift) - Bitcoin functionality
+- [CryptoSwift](https://github.com/krzyzanowskim/CryptoSwift) - Additional cryptography
 
 ## License
 
@@ -259,7 +385,7 @@ CashuKit is released under the MIT License. See [LICENSE](LICENSE) for details.
 
 - [Cashu Protocol](https://docs.cashu.space) - The underlying ecash protocol
 - [cashubtc/nuts](https://github.com/cashubtc/nuts) - Protocol specifications
-- [cashubtc/cdk](https://github.com/cashubtc/cdk) - Reference implementation
+- The Cashu community for protocol development and support
 
 ---
 
