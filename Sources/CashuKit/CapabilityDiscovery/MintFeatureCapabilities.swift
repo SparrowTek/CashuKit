@@ -1,11 +1,12 @@
 //
 //  MintCapabilities.swift
-//  CoreCashu
+//  CashuKit
 //
 //  Capability discovery and feature gating for Cashu mints
 //
 
 import Foundation
+import CoreCashu
 
 /// Represents a specific capability/feature of a mint
 public struct MintFeatureCapability: Hashable, Sendable {
@@ -251,33 +252,17 @@ public struct MintFeatureCapabilityManager: Sendable {
             guidance += " Multi-path payments are not available. Use single-mint payments instead."
         }
         
-        return CashuError.capabilityNotSupported(
-            mintURL: mintURL.absoluteString,
-            capability: capability.nutID,
-            operation: operationDesc,
-            guidance: guidance
-        )
+        // Create a detailed message for the unsupportedOperation error
+        let message = """
+        Operation '\(operationDesc)' requires NUT-\(capability.nutID) support.
+        Mint: \(mintURL.absoluteString)
+        \(guidance)
+        """
+        
+        return CashuError.unsupportedOperation(message)
     }
 }
 
-/// Extension to CashuError for capability-based errors
-public extension CashuError {
-    /// Create a detailed capability error
-    static func capabilityNotSupported(
-        mintURL: String,
-        capability: String,
-        operation: String,
-        guidance: String
-    ) -> CashuError {
-        // Use a more descriptive error that includes all context
-        let message = """
-        Operation '\(operation)' requires NUT-\(capability) support.
-        Mint: \(mintURL)
-        \(guidance)
-        """
-        return .unsupportedOperation(message)
-    }
-}
 
 /// Protocol for feature probing
 public protocol FeatureProbe: Sendable {

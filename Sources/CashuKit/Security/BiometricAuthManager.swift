@@ -330,7 +330,7 @@ public extension BiometricAuthManager {
     }
     
     /// Store data in keychain with biometric protection
-    public func storeWithBiometricProtection(
+    func storeWithBiometricProtection(
         data: Data,
         account: String,
         service: String
@@ -364,7 +364,7 @@ public extension BiometricAuthManager {
     }
     
     /// Retrieve data from keychain with biometric authentication
-    public func retrieveWithBiometricAuth(
+    func retrieveWithBiometricAuth(
         account: String,
         service: String,
         reason: String

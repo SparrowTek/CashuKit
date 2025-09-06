@@ -8,8 +8,8 @@
 import SwiftUI
 import CoreCashu
 
-/// Model for mint display
-public struct MintInfo: Identifiable {
+/// Model for mint display in UI
+public struct MintDisplayInfo: Identifiable {
     public let id = UUID()
     public let url: URL
     public let name: String
@@ -41,8 +41,8 @@ public struct MintInfo: Identifiable {
 /// SwiftUI view for mint selection and management
 public struct MintSelectionView: View {
     @ObservedObject private var wallet: AppleCashuWallet
-    @State private var mints: [MintInfo] = []
-    @State private var selectedMint: MintInfo?
+    @State private var mints: [MintDisplayInfo] = []
+    @State private var selectedMint: MintDisplayInfo?
     @State private var showingAddMint = false
     @State private var newMintURL = ""
     @State private var isCheckingMint = false
@@ -148,7 +148,7 @@ public struct MintSelectionView: View {
         }
     }
     
-    private func selectMint(_ mint: MintInfo) {
+    private func selectMint(_ mint: MintDisplayInfo) {
         Task {
             do {
                 try await wallet.connect(to: mint.url)
@@ -181,7 +181,7 @@ public struct MintSelectionView: View {
                 // Check if mint is reachable
                 try await wallet.connect(to: url)
                 
-                let mint = MintInfo(
+                let mint = MintDisplayInfo(
                     url: url,
                     name: url.host ?? "Unknown Mint",
                     isOnline: true
@@ -213,16 +213,16 @@ public struct MintSelectionView: View {
     
     // MARK: - Sample Data
     
-    private var popularMints: [MintInfo] {
+    private var popularMints: [MintDisplayInfo] {
         [
-            MintInfo(
+            MintDisplayInfo(
                 url: URL(string: "https://mint.minibits.cash")!,
                 name: "Minibits",
                 description: "Popular Cashu mint",
                 nuts: ["NUT-00", "NUT-01", "NUT-02", "NUT-03", "NUT-04", "NUT-05"],
                 isOnline: true
             ),
-            MintInfo(
+            MintDisplayInfo(
                 url: URL(string: "https://legend.lnbits.com")!,
                 name: "LNbits Legend",
                 description: "LNbits demo mint",
@@ -272,7 +272,7 @@ struct CurrentMintRow: View {
 // MARK: - Mint Row View
 
 struct MintRowView: View {
-    let mint: MintInfo
+    let mint: MintDisplayInfo
     let isSelected: Bool
     let onSelect: () -> Void
     

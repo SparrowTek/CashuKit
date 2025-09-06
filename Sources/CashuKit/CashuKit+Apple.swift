@@ -205,7 +205,7 @@ public class AppleCashuWallet: ObservableObject {
             // Select proofs for amount
             let selectedProofs = selectProofs(for: amount)
             guard !selectedProofs.isEmpty else {
-                throw CashuError.insufficientBalance
+                throw CashuError.balanceInsufficient
             }
             
             // Create token
@@ -368,26 +368,7 @@ public class AppleCashuWallet: ObservableObject {
 }
 
 // MARK: - Error Types
-
-public enum CashuError: LocalizedError {
-    case insufficientBalance
-    case invalidToken
-    case mintNotConnected
-    case networkError(String)
-    
-    public var errorDescription: String? {
-        switch self {
-        case .insufficientBalance:
-            return "Insufficient balance for this operation"
-        case .invalidToken:
-            return "The token is invalid or malformed"
-        case .mintNotConnected:
-            return "Not connected to a mint"
-        case .networkError(let message):
-            return "Network error: \(message)"
-        }
-    }
-}
+// Note: Using CashuError from CoreCashu instead of defining our own
 
 // MARK: - Placeholder Types (temporary until CoreCashu integration is complete)
 
