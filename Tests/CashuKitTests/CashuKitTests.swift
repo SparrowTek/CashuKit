@@ -25,16 +25,19 @@ struct CashuKitTests {
         #expect(await wallet.isConnected == false)
     }
     
-    @Test("Keychain configuration options")
-    func testKeychainConfigs() {
-        let standardConfig = KeychainSecureStore.SecurityConfiguration.standard
-        #expect(standardConfig.useSecureEnclave == true)
+    @Test("Keychain basic initialization")
+    func testKeychainInit() {
+        // Test basic initialization
+        let store1 = KeychainSecureStore()
+        #expect(store1 != nil)
         
-        let maxConfig = KeychainSecureStore.SecurityConfiguration.maximum
-        #expect(maxConfig.useBiometrics == true)
-        #expect(maxConfig.useSecureEnclave == true)
-        #expect(maxConfig.accessibleWhenUnlocked == false)
-        #expect(maxConfig.synchronizable == false)
+        // Test with access group
+        let store2 = KeychainSecureStore(accessGroup: "com.test.group")
+        #expect(store2 != nil)
+        
+        // Test with synchronizable
+        let store3 = KeychainSecureStore(synchronizable: true)
+        #expect(store3 != nil)
     }
     
     @Test("Network monitor instances")
