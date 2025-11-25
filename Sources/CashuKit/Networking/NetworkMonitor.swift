@@ -72,13 +72,31 @@ public final class NetworkMonitor: ObservableObject {
     
     /// Represents an operation that can be queued for offline execution
     public struct QueuedOperation: Identifiable, Sendable, Codable {
-        public let id = UUID()
+        public let id: UUID
         public let type: OperationType
         public let data: Data
         public let priority: Priority
         public let createdAt: Date
         public var retryCount: Int = 0
         public var lastAttempt: Date?
+
+        public init(
+            id: UUID = UUID(),
+            type: OperationType,
+            data: Data,
+            priority: Priority,
+            createdAt: Date = Date(),
+            retryCount: Int = 0,
+            lastAttempt: Date? = nil
+        ) {
+            self.id = id
+            self.type = type
+            self.data = data
+            self.priority = priority
+            self.createdAt = createdAt
+            self.retryCount = retryCount
+            self.lastAttempt = lastAttempt
+        }
         
         public enum OperationType: String, Sendable, Codable {
             case sendToken
@@ -203,22 +221,26 @@ public final class NetworkMonitor: ObservableObject {
     /// Wait for connectivity with timeout
     public func waitForConnectivity(timeout: TimeInterval = 30) async -> Bool {
         if isConnected { return true }
-        
+
         return await withCheckedContinuation { continuation in
-            var cancellable: AnyCancellable?
-            let timeoutTimer = Timer.publish(every: timeout, on: .main, in: .common)
+            var connectivityCancellable: AnyCancellable?
+            var timeoutCancellable: AnyCancellable?
+
+            timeoutCancellable = Timer.publish(every: timeout, on: .main, in: .common)
                 .autoconnect()
                 .first()
                 .sink { _ in
-                    cancellable?.cancel()
+                    connectivityCancellable?.cancel()
+                    timeoutCancellable?.cancel()
                     continuation.resume(returning: false)
                 }
-            
-            cancellable = $isConnected
+
+            connectivityCancellable = $isConnected
                 .filter { $0 }
                 .first()
                 .sink { _ in
-                    cancellable?.cancel()
+                    connectivityCancellable?.cancel()
+                    timeoutCancellable?.cancel()
                     continuation.resume(returning: true)
                 }
         }

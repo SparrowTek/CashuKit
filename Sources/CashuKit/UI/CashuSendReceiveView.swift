@@ -34,13 +34,14 @@ public struct CashuSendReceiveView: View {
     public var body: some View {
         VStack(spacing: 0) {
             // Tab selector
-            Picker("", selection: $selectedTab) {
+            Picker("Transaction type", selection: $selectedTab) {
                 Text("Send").tag(Tab.send)
                 Text("Receive").tag(Tab.receive)
             }
             .pickerStyle(SegmentedPickerStyle())
             .padding()
-            
+            .accessibilityLabel("Select transaction type")
+
             ScrollView {
                 VStack(spacing: 20) {
                     switch selectedTab {
@@ -73,37 +74,43 @@ public struct CashuSendReceiveView: View {
                 Text("Amount (sats)")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 TextField("0", text: $amount)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .accessibilityLabel("Amount to send in satoshis")
+                    .accessibilityHint("Enter the number of satoshis to send")
                     #if os(iOS)
                     .keyboardType(.numberPad)
                     #endif
             }
-            
+
             // Memo input
             VStack(alignment: .leading, spacing: 8) {
                 Text("Memo (optional)")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 TextField("What's this for?", text: $memo)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .accessibilityLabel("Memo")
+                    .accessibilityHint("Optional description for this transaction")
             }
-            
+
             // Available balance
             HStack {
                 Text("Available:")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 Text("\(wallet.balance) sats")
                     .font(.caption)
                     .fontWeight(.medium)
-                
+
                 Spacer()
             }
-            
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Available balance: \(wallet.balance) satoshis")
+
             // Send button
             Button(action: sendTokens) {
                 HStack {
@@ -111,10 +118,12 @@ public struct CashuSendReceiveView: View {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle())
                             .scaleEffect(0.8)
+                            .accessibilityLabel("Loading")
                     } else {
                         Image(systemName: "paperplane.fill")
+                            .accessibilityHidden(true)
                     }
-                    
+
                     Text("Generate Token")
                 }
                 .frame(maxWidth: .infinity)
@@ -124,7 +133,9 @@ public struct CashuSendReceiveView: View {
                 .cornerRadius(12)
             }
             .disabled(sendButtonDisabled)
-            
+            .accessibilityLabel("Generate token")
+            .accessibilityHint(sendButtonDisabled ? "Enter a valid amount to enable" : "Tap to generate a Cashu token for the entered amount")
+
             // Generated token display
             if !generatedToken.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -132,15 +143,17 @@ public struct CashuSendReceiveView: View {
                         Text("Token Generated")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        
+
                         Spacer()
-                        
+
                         Button(action: { showingQRCode = true }) {
                             Image(systemName: "qrcode")
                                 .foregroundColor(.accentColor)
                         }
+                        .accessibilityLabel("Show QR code")
+                        .accessibilityHint("Display the token as a QR code")
                     }
-                    
+
                     Text(generatedToken)
                         .font(.system(.caption, design: .monospaced))
                         .padding()
@@ -149,12 +162,16 @@ public struct CashuSendReceiveView: View {
                         .onTapGesture {
                             copyToClipboard(generatedToken)
                         }
-                    
+                        .accessibilityLabel("Generated Cashu token")
+                        .accessibilityHint("Tap to copy to clipboard")
+
                     Button(action: { copyToClipboard(generatedToken) }) {
                         Label("Copy to Clipboard", systemImage: "doc.on.doc")
                             .font(.caption)
                     }
+                    .accessibilityLabel("Copy token to clipboard")
                 }
+                .accessibilityElement(children: .contain)
             }
         }
     }
@@ -169,7 +186,7 @@ public struct CashuSendReceiveView: View {
                 Text("Cashu Token")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 TextEditor(text: $tokenToReceive)
                     .font(.system(.body, design: .monospaced))
                     .frame(minHeight: 100)
@@ -178,8 +195,10 @@ public struct CashuSendReceiveView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
                     )
+                    .accessibilityLabel("Token input field")
+                    .accessibilityHint("Paste or enter a Cashu token to receive")
             }
-            
+
             // Scan QR button
             Button(action: { showingScanner = true }) {
                 Label("Scan QR Code", systemImage: "qrcode.viewfinder")
@@ -188,7 +207,9 @@ public struct CashuSendReceiveView: View {
                     .background(Color.secondary.opacity(0.1))
                     .cornerRadius(12)
             }
-            
+            .accessibilityLabel("Scan QR code")
+            .accessibilityHint("Open camera to scan a Cashu token QR code")
+
             // Receive button
             Button(action: receiveTokens) {
                 HStack {
@@ -196,10 +217,12 @@ public struct CashuSendReceiveView: View {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle())
                             .scaleEffect(0.8)
+                            .accessibilityLabel("Loading")
                     } else {
                         Image(systemName: "arrow.down.circle.fill")
+                            .accessibilityHidden(true)
                     }
-                    
+
                     Text("Receive Token")
                 }
                 .frame(maxWidth: .infinity)
@@ -209,6 +232,8 @@ public struct CashuSendReceiveView: View {
                 .cornerRadius(12)
             }
             .disabled(tokenToReceive.isEmpty || wallet.isLoading)
+            .accessibilityLabel("Receive token")
+            .accessibilityHint(tokenToReceive.isEmpty ? "Enter a token first to enable" : "Tap to receive the entered Cashu token")
         }
     }
     
@@ -291,7 +316,7 @@ public struct CashuSendReceiveView: View {
 struct QRCodeView: View {
     let data: String
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
@@ -305,6 +330,8 @@ struct QRCodeView: View {
                         .padding()
                         .background(Color.white)
                         .cornerRadius(12)
+                        .accessibilityLabel("QR code for Cashu token")
+                        .accessibilityHint("Scan this QR code with another device to receive the token")
                     #else
                     Image(nsImage: qrImage)
                         .resizable()
@@ -313,12 +340,15 @@ struct QRCodeView: View {
                         .padding()
                         .background(Color.white)
                         .cornerRadius(12)
+                        .accessibilityLabel("QR code for Cashu token")
+                        .accessibilityHint("Scan this QR code with another device to receive the token")
                     #endif
                 } else {
                     Text("Failed to generate QR code")
                         .foregroundColor(.secondary)
+                        .accessibilityLabel("Error: Failed to generate QR code")
                 }
-                
+
                 Text("Scan this code to receive the token")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -334,6 +364,7 @@ struct QRCodeView: View {
                     Button("Done") {
                         dismiss()
                     }
+                    .accessibilityLabel("Close QR code view")
                 }
             }
         }

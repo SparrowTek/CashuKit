@@ -12,9 +12,9 @@ import Combine
 /// Apple-specific wrapper for CashuWallet with SwiftUI integration
 @MainActor
 public class AppleCashuWallet: ObservableObject {
-    
+
     // MARK: - Published Properties for SwiftUI
-    
+
     @Published public private(set) var balance: Int = 0
     @Published public private(set) var isConnected: Bool = false
     @Published public private(set) var currentMintURL: URL?
@@ -22,205 +22,209 @@ public class AppleCashuWallet: ObservableObject {
     @Published public private(set) var lastError: (any Error)?
     @Published public private(set) var proofs: [Proof] = []
     @Published public private(set) var pendingTransactions: [String] = []
-    
+
     // MARK: - Private Properties
-    
-    private let wallet: CashuWallet // Placeholder - would be actual CoreCashu type
+
+    private var wallet: CashuWallet?
     private let secureStore: KeychainSecureStore
     private let logger: OSLogLogger
-    private let webSocketProvider: AppleWebSocketClientProvider
     private var cancellables = Set<AnyCancellable>()
-    
+
     // MARK: - Configuration
-    
+
     public struct Configuration: Sendable {
         public let keychainAccessGroup: String?
         public let logSubsystem: String
         public let logLevel: LogLevel
         public let enableBiometrics: Bool
         public let enableiCloudSync: Bool
-        
+        public let httpTimeoutInterval: TimeInterval
+        public let retryAttempts: Int
+
         public init(
             keychainAccessGroup: String? = nil,
             logSubsystem: String? = nil,
             logLevel: LogLevel = .info,
             enableBiometrics: Bool = false,
-            enableiCloudSync: Bool = false
+            enableiCloudSync: Bool = false,
+            httpTimeoutInterval: TimeInterval = 30,
+            retryAttempts: Int = 3
         ) {
             self.keychainAccessGroup = keychainAccessGroup
             self.logSubsystem = logSubsystem ?? Bundle.main.bundleIdentifier ?? "com.cashukit"
             self.logLevel = logLevel
             self.enableBiometrics = enableBiometrics
             self.enableiCloudSync = enableiCloudSync
+            self.httpTimeoutInterval = httpTimeoutInterval
+            self.retryAttempts = retryAttempts
         }
-        
+
         public static let defaultConfiguration = Configuration()
     }
-    
+
+    private let configuration: Configuration
+
     // MARK: - Initialization
-    
+
     /// Initialize with configuration
-    public init(configuration: Configuration = .defaultConfiguration) async {
+    public init(configuration: Configuration = .defaultConfiguration) {
+        self.configuration = configuration
+
         // Set up Apple-specific implementations
-        self.secureStore = KeychainSecureStore(accessGroup: configuration.keychainAccessGroup)
+        self.secureStore = KeychainSecureStore(
+            accessGroup: configuration.keychainAccessGroup,
+            synchronizable: configuration.enableiCloudSync
+        )
         self.logger = OSLogLogger(
             subsystem: configuration.logSubsystem,
             category: "Wallet",
             minimumLevel: configuration.logLevel
         )
-        self.webSocketProvider = AppleWebSocketClientProvider()
-        
-        // Create the core wallet - simplified initialization for now
-        // Would properly initialize with CoreCashu's CashuWallet
-        self.wallet = CashuWallet()
-        
-        // Set up observers
-        await setupObservers()
-        
-        // Load initial state
-        await loadInitialState()
     }
-    
+
     /// Convenience initializer for a specific mint
     public convenience init(
         mintURL: URL,
         configuration: Configuration = .defaultConfiguration
     ) async {
-        await self.init(configuration: configuration)
-        self.currentMintURL = mintURL
+        self.init(configuration: configuration)
+        do {
+            try await connect(to: mintURL)
+        } catch {
+            logger.error("Failed to connect to mint during initialization: \(error.localizedDescription)")
+        }
     }
-    
+
     // MARK: - Public Methods
-    
+
     /// Connect to a mint
     public func connect(to mintURL: URL) async throws {
         isLoading = true
         defer { isLoading = false }
-        
-        // Simplified connection - would use actual CoreCashu method
-        // try await wallet.connectMint(url: mintURL.absoluteString)
-        currentMintURL = mintURL
-        isConnected = true
-        lastError = nil
-        logger.info("Connected to mint: \(mintURL.absoluteString)")
-        return
-        
-        #if false
+
         do {
-            // Real implementation would go here
+            // Create wallet configuration for CoreCashu
+            let walletConfig = WalletConfiguration(
+                mintURL: mintURL.absoluteString,
+                unit: "sat",
+                retryAttempts: configuration.retryAttempts,
+                retryDelay: 1.0,
+                operationTimeout: configuration.httpTimeoutInterval
+            )
+
+            // Create the wallet with CoreCashu
+            let newWallet = await CashuWallet(
+                configuration: walletConfig,
+                secureStore: secureStore,
+                logger: logger
+            )
+
+            // Initialize the wallet (fetches mint info and keysets)
+            try await newWallet.initialize()
+
+            self.wallet = newWallet
+            currentMintURL = mintURL
+            isConnected = true
+            lastError = nil
+
+            logger.info("Connected to mint: \(mintURL.absoluteString)")
+
+            // Refresh balance after connecting
+            await refreshBalance()
         } catch {
             lastError = error
             isConnected = false
             logger.error("Failed to connect to mint: \(error.localizedDescription)")
             throw error
         }
-        #endif
     }
-    
+
     /// Disconnect from current mint
     public func disconnect() async {
-        await wallet.disconnectMint()
+        wallet = nil
         isConnected = false
         currentMintURL = nil
+        proofs.removeAll()
+        balance = 0
+        logger.info("Disconnected from mint")
     }
-    
-    /// Request mint (Lightning invoice)
-    public func requestMint(amount: Int) async throws -> String {
-        isLoading = true
-        defer { isLoading = false }
-        
-        do {
-            let invoice = try await wallet.requestMint(amount: UInt64(amount))
-            pendingTransactions.append(invoice)
-            logger.info("Requested mint for amount: \(amount)")
-            return invoice
-        } catch {
-            lastError = error
-            logger.error("Failed to request mint: \(error.localizedDescription)")
-            throw error
+
+    /// Mint tokens from a payment request
+    /// - Parameters:
+    ///   - amount: Amount to mint
+    ///   - paymentRequest: Lightning invoice or other payment request
+    /// - Returns: MintResult with the minted proofs
+    public func mint(amount: Int, paymentRequest: String) async throws -> MintResult {
+        guard let wallet = wallet else {
+            throw CashuError.walletNotInitialized
         }
-    }
-    
-    /// Mint tokens from paid invoice
-    public func mint(quote: String) async throws -> [Proof] {
+
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
-            let newProofs = try await wallet.mint(quote: quote)
-            proofs.append(contentsOf: newProofs)
+            let result = try await wallet.mint(
+                amount: amount,
+                paymentRequest: paymentRequest
+            )
+
+            // Update local proofs
+            let newProofs = try await wallet.proofs
+            proofs = newProofs
             updateBalance()
-            
-            // Remove from pending
-            if let index = pendingTransactions.firstIndex(of: quote) {
-                pendingTransactions.remove(at: index)
-            }
-            
-            logger.info("Minted \(newProofs.count) new proofs")
-            return newProofs
+
+            logger.info("Minted \(result.newProofs.count) new proofs for \(amount) sats")
+            return result
         } catch {
             lastError = error
             logger.error("Failed to mint: \(error.localizedDescription)")
             throw error
         }
     }
-    
+
     /// Melt tokens (pay Lightning invoice)
-    public func melt(invoice: String, proofs: [Proof]? = nil) async throws -> MeltResponse {
+    public func melt(paymentRequest: String) async throws -> MeltResult {
+        guard let wallet = wallet else {
+            throw CashuError.walletNotInitialized
+        }
+
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
-            let proofsToUse = proofs ?? self.proofs
-            let response = try await wallet.melt(
-                invoice: invoice,
-                proofs: proofsToUse
-            )
-            
+            let result = try await wallet.melt(paymentRequest: paymentRequest)
+
             // Update local proofs
-            if proofs == nil {
-                self.proofs.removeAll()
-            } else {
-                self.proofs.removeAll { proof in
-                    proofsToUse.contains { $0.secret == proof.secret }
-                }
-            }
-            
+            let remainingProofs = try await wallet.proofs
+            proofs = remainingProofs
             updateBalance()
-            logger.info("Melted tokens for invoice")
-            return response
+
+            logger.info("Melted tokens for invoice, state: \(result.state)")
+            return result
         } catch {
             lastError = error
             logger.error("Failed to melt: \(error.localizedDescription)")
             throw error
         }
     }
-    
-    /// Send tokens
+
+    /// Send tokens (create a Cashu token)
     public func send(amount: Int, memo: String? = nil) async throws -> CashuToken {
+        guard let wallet = wallet else {
+            throw CashuError.walletNotInitialized
+        }
+
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
-            // Select proofs for amount
-            let selectedProofs = selectProofs(for: amount)
-            guard !selectedProofs.isEmpty else {
-                throw CashuError.balanceInsufficient
-            }
-            
-            // Create token
-            let token = try await wallet.send(
-                amount: UInt64(amount),
-                proofs: selectedProofs,
-                memo: memo
-            )
-            
-            // Remove sent proofs
-            self.proofs.removeAll { proof in
-                selectedProofs.contains { $0.secret == proof.secret }
-            }
-            
+            let token = try await wallet.send(amount: amount, memo: memo)
+
+            // Update local proofs (proofs used for sending are removed)
+            let remainingProofs = try await wallet.proofs
+            proofs = remainingProofs
             updateBalance()
+
             logger.info("Sent \(amount) sats")
             return token
         } catch {
@@ -229,16 +233,24 @@ public class AppleCashuWallet: ObservableObject {
             throw error
         }
     }
-    
+
     /// Receive tokens
     public func receive(token: String) async throws -> [Proof] {
+        guard let wallet = wallet else {
+            throw CashuError.walletNotInitialized
+        }
+
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
-            let receivedProofs = try await wallet.receive(token: token)
-            proofs.append(contentsOf: receivedProofs)
+            let receivedProofs = try await wallet.importToken(token)
+
+            // Update local proofs
+            let allProofs = try await wallet.proofs
+            proofs = allProofs
             updateBalance()
+
             logger.info("Received \(receivedProofs.count) proofs")
             return receivedProofs
         } catch {
@@ -247,60 +259,113 @@ public class AppleCashuWallet: ObservableObject {
             throw error
         }
     }
-    
-    /// Check proof states
-    public func checkProofStates() async throws {
+
+    /// Receive a CashuToken directly
+    public func receive(token: CashuToken) async throws -> [Proof] {
+        guard let wallet = wallet else {
+            throw CashuError.walletNotInitialized
+        }
+
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
-            let states = try await wallet.checkProofStates(proofs: proofs)
-            
-            // Remove spent proofs
-            let spentSecrets = states
-                .filter { $0.state == .spent }
-                .map { $0.secret }
-            
-            proofs.removeAll { proof in
-                spentSecrets.contains(proof.secret)
-            }
-            
+            let receivedProofs = try await wallet.receive(token: token)
+
+            // Update local proofs
+            let allProofs = try await wallet.proofs
+            proofs = allProofs
             updateBalance()
-            logger.info("Checked proof states, removed \(spentSecrets.count) spent proofs")
+
+            logger.info("Received \(receivedProofs.count) proofs")
+            return receivedProofs
+        } catch {
+            lastError = error
+            logger.error("Failed to receive: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    /// Check proof states
+    public func checkProofStates() async throws {
+        guard let wallet = wallet else {
+            throw CashuError.walletNotInitialized
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let result = try await wallet.checkProofStates(proofs)
+
+            // The wallet should automatically remove spent proofs
+            let validProofs = try await wallet.proofs
+            proofs = validProofs
+            updateBalance()
+
+            let spentCount = result.getResults(withState: .spent).count
+            let unspentCount = result.getResults(withState: .unspent).count
+            logger.info("Checked proof states: \(spentCount) spent, \(unspentCount) unspent")
         } catch {
             lastError = error
             logger.error("Failed to check proof states: \(error.localizedDescription)")
             throw error
         }
     }
-    
+
     /// Restore wallet from mnemonic
     public func restore(mnemonic: String) async throws {
+        guard let url = currentMintURL else {
+            throw CashuError.invalidMintConfiguration
+        }
+
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
+            // Save mnemonic securely
             try await secureStore.saveMnemonic(mnemonic)
-            // Simplified restore - would use actual CoreCashu method
-            // let restoredProofs = try await wallet.restore()
-            let restoredProofs: [Proof] = []
-            proofs = restoredProofs
+
+            // Create wallet configuration
+            let walletConfig = WalletConfiguration(
+                mintURL: url.absoluteString,
+                unit: "sat",
+                retryAttempts: configuration.retryAttempts,
+                retryDelay: 1.0,
+                operationTimeout: configuration.httpTimeoutInterval
+            )
+
+            // Create new wallet with mnemonic
+            let newWallet = try await CashuWallet(
+                configuration: walletConfig,
+                mnemonic: mnemonic,
+                secureStore: secureStore,
+                logger: logger
+            )
+
+            try await newWallet.initialize()
+
+            // Restore proofs from seed - returns the count of restored proofs
+            let restoredCount = try await newWallet.restoreFromSeed()
+
+            self.wallet = newWallet
+            // Fetch the proofs from the wallet
+            let walletProofs = try await newWallet.proofs
+            proofs = walletProofs
             updateBalance()
-            logger.info("Restored wallet with \(restoredProofs.count) proofs")
+
+            logger.info("Restored wallet with \(restoredCount) proofs")
         } catch {
             lastError = error
             logger.error("Failed to restore wallet: \(error.localizedDescription)")
             throw error
         }
     }
-    
+
     /// Generate new mnemonic
     public func generateMnemonic() async throws -> String {
         do {
-            // Simplified mnemonic generation - would use BIP39 from CoreCashu
-            let words = ["abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", 
-                        "absurd", "abuse", "access", "accident"]
-            let mnemonic = words.joined(separator: " ")
+            let mnemonic = try BIP39.generateMnemonic()
             try await secureStore.saveMnemonic(mnemonic)
             logger.info("Generated new mnemonic")
             return mnemonic
@@ -310,14 +375,20 @@ public class AppleCashuWallet: ObservableObject {
             throw error
         }
     }
-    
+
+    /// Get stored mnemonic
+    public func getMnemonic() async throws -> String? {
+        try await secureStore.loadMnemonic()
+    }
+
     /// Clear all data
     public func clearAllData() async throws {
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
             try await secureStore.clearAll()
+            try await wallet?.clearAll()
             proofs.removeAll()
             balance = 0
             pendingTransactions.removeAll()
@@ -329,104 +400,84 @@ public class AppleCashuWallet: ObservableObject {
             throw error
         }
     }
-    
-    // MARK: - Private Methods
-    
-    private func setupObservers() async {
-        // Set up any Combine publishers or async streams for real-time updates
-        // This could include WebSocket messages, state changes, etc.
-    }
-    
-    private func loadInitialState() async {
-        // Load any persisted state
-        if let _ = try? await secureStore.loadMnemonic() {
-            // Wallet has existing mnemonic
-            logger.debug("Loaded existing wallet")
+
+    /// Refresh balance from wallet
+    public func refreshBalance() async {
+        guard let wallet = wallet else { return }
+
+        do {
+            let currentProofs = try await wallet.proofs
+            proofs = currentProofs
+            updateBalance()
+        } catch {
+            logger.error("Failed to refresh balance: \(error.localizedDescription)")
         }
-        
-        // Load proofs if stored locally
-        // This would need additional implementation
     }
-    
+
+    /// Get mint info
+    public var mintInfo: MintInfo? {
+        get async {
+            await wallet?.mintInfo
+        }
+    }
+
+    /// Get balance breakdown
+    public func getBalanceBreakdown() async throws -> BalanceBreakdown {
+        guard let wallet = wallet else {
+            throw CashuError.walletNotInitialized
+        }
+        return try await wallet.getBalanceBreakdown()
+    }
+
+    /// Export token string for a given amount
+    public func exportToken(amount: Int, memo: String? = nil) async throws -> String {
+        guard let wallet = wallet else {
+            throw CashuError.walletNotInitialized
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let tokenString = try await wallet.exportToken(
+                amount: amount,
+                memo: memo,
+                version: TokenVersion.v3,
+                includeURI: false
+            )
+
+            // Update local proofs
+            let remainingProofs = try await wallet.proofs
+            proofs = remainingProofs
+            updateBalance()
+
+            logger.info("Exported token for \(amount) sats")
+            return tokenString
+        } catch {
+            lastError = error
+            logger.error("Failed to export token: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    // MARK: - Private Methods
+
     private func updateBalance() {
         balance = proofs.reduce(0) { $0 + $1.amount }
     }
-    
-    private func selectProofs(for amount: Int) -> [Proof] {
-        // Simple proof selection - can be optimized
-        var selected: [Proof] = []
-        var total = 0
-        
-        for proof in proofs.sorted(by: { $0.amount > $1.amount }) {
-            if total >= amount { break }
-            selected.append(proof)
-            total += proof.amount
-        }
-        
-        return total >= amount ? selected : []
+}
+
+// MARK: - Token Serialization Extensions
+
+public extension AppleCashuWallet {
+
+    /// Encode a CashuToken to V3 string format
+    func encodeToken(_ token: CashuToken) throws -> String {
+        try CashuTokenUtils.serializeTokenV3(token)
     }
-}
 
-// MARK: - Error Types
-// Note: Using CashuError from CoreCashu instead of defining our own
-
-// MARK: - Placeholder Types (temporary until CoreCashu integration is complete)
-
-// Simplified CashuWallet placeholder
-struct CashuWallet {
-    init() {}
-    
-    func disconnectMint() async {}
-    func requestMint(amount: UInt64) async throws -> String { return "invoice_placeholder" }
-    func mint(quote: String) async throws -> [Proof] { return [] }
-    func melt(invoice: String, proofs: [Proof]) async throws -> MeltResponse { 
-        return MeltResponse(paid: true, preimage: nil, change: nil)
+    /// Decode a Cashu token string
+    func decodeToken(_ tokenString: String) throws -> CashuToken {
+        try CashuTokenUtils.deserializeToken(tokenString)
     }
-    func send(amount: UInt64, proofs: [Proof], memo: String?) async throws -> CashuToken {
-        return CashuToken(token: [TokenEntry(mint: "test", proofs: proofs)], unit: "sat", memo: memo)
-    }
-    func receive(token: String) async throws -> [Proof] { return [] }
-    func checkProofStates(proofs: [Proof]) async throws -> [ProofState] { return [] }
-}
-
-public struct Proof: Codable, Identifiable, Sendable {
-    public let id: String
-    public let amount: Int
-    public let secret: String
-    public let C: String
-    
-    public init(id: String = UUID().uuidString, amount: Int, secret: String, C: String) {
-        self.id = id
-        self.amount = amount
-        self.secret = secret
-        self.C = C
-    }
-}
-
-public struct MeltResponse: Codable, Sendable {
-    public let paid: Bool
-    public let preimage: String?
-    public let change: [Proof]?
-}
-
-public struct CashuToken: Codable, Sendable {
-    public let token: [TokenEntry]
-    public let unit: String?
-    public let memo: String?
-}
-
-public struct TokenEntry: Codable, Sendable {
-    public let mint: String
-    public let proofs: [Proof]
-}
-
-public struct ProofState: Codable, Sendable {
-    public enum State: String, Codable, Sendable {
-        case unspent
-        case spent
-        case pending
-    }
-    
-    public let secret: String
-    public let state: State
 }

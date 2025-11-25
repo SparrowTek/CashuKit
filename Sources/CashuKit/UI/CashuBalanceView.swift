@@ -39,36 +39,44 @@ public struct CashuBalanceView: View {
                 Text(formattedBalance)
                     .font(.system(size: largeFontSize, weight: .bold, design: .rounded))
                     .foregroundColor(accentColor)
-                
+                    .accessibilityLabel("Balance")
+                    .accessibilityValue("\(wallet.balance) satoshis")
+
                 if showUnit {
                     Text("sats")
                         .font(.system(size: smallFontSize, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
+                        .accessibilityHidden(true)
                 }
             }
-            
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Wallet balance: \(formattedBalance) satoshis")
+
             // Bitcoin equivalent (optional)
             if wallet.balance > 0 {
                 Text(bitcoinEquivalent)
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .accessibilityLabel("Bitcoin equivalent: \(bitcoinEquivalent)")
             }
-            
+
             // Connection status
             HStack(spacing: 4) {
                 Circle()
                     .fill(wallet.isConnected ? Color.green : Color.red)
                     .frame(width: 8, height: 8)
-                
+                    .accessibilityHidden(true)
+
                 Text(wallet.isConnected ? "Connected" : "Disconnected")
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                
+
                 if let mintURL = wallet.currentMintURL {
                     Text("•")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                    
+                        .accessibilityHidden(true)
+
                     Text(mintURL.host ?? "Unknown")
                         .font(.caption2)
                         .foregroundColor(.secondary)
@@ -76,8 +84,19 @@ public struct CashuBalanceView: View {
                         .truncationMode(.middle)
                 }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(connectionStatusAccessibilityLabel)
         }
         .padding()
+        .accessibilityElement(children: .contain)
+    }
+
+    private var connectionStatusAccessibilityLabel: String {
+        let status = wallet.isConnected ? "Connected" : "Disconnected"
+        if let mintURL = wallet.currentMintURL {
+            return "\(status) to \(mintURL.host ?? "unknown mint")"
+        }
+        return status
     }
     
     // MARK: - Computed Properties

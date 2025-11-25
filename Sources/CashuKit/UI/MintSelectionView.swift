@@ -239,33 +239,38 @@ struct CurrentMintRow: View {
     let url: URL
     let isConnected: Bool
     let onDisconnect: () -> Void
-    
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(url.host ?? "Unknown")
                     .font(.headline)
-                
+
                 HStack(spacing: 4) {
                     Circle()
                         .fill(isConnected ? Color.green : Color.orange)
                         .frame(width: 8, height: 8)
-                    
+                        .accessibilityHidden(true)
+
                     Text(isConnected ? "Connected" : "Connecting...")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
-            
+
             Spacer()
-            
+
             Button(action: onDisconnect) {
                 Text("Disconnect")
                     .font(.caption)
                     .foregroundColor(.red)
             }
+            .accessibilityLabel("Disconnect from mint")
+            .accessibilityHint("Tap to disconnect from the current mint")
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Current mint: \(url.host ?? "Unknown"), \(isConnected ? "connected" : "connecting")")
     }
 }
 
@@ -275,7 +280,7 @@ struct MintRowView: View {
     let mint: MintDisplayInfo
     let isSelected: Bool
     let onSelect: () -> Void
-    
+
     var body: some View {
         Button(action: onSelect) {
             HStack {
@@ -284,55 +289,72 @@ struct MintRowView: View {
                         Text(mint.name)
                             .font(.headline)
                             .foregroundColor(.primary)
-                        
+
                         if isSelected {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.caption)
                                 .foregroundColor(.accentColor)
+                                .accessibilityHidden(true)
                         }
                     }
-                    
+
                     if let description = mint.description {
                         Text(description)
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
-                    
+
                     HStack(spacing: 8) {
                         // Online status
                         HStack(spacing: 4) {
                             Circle()
                                 .fill(mint.isOnline ? Color.green : Color.red)
                                 .frame(width: 6, height: 6)
-                            
+                                .accessibilityHidden(true)
+
                             Text(mint.isOnline ? "Online" : "Offline")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         // NUT support
                         if !mint.nuts.isEmpty {
                             Text("•")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
-                            
+                                .accessibilityHidden(true)
+
                             Text("\(mint.nuts.count) NUTs")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
                     }
                 }
-                
+
                 Spacer()
-                
+
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .accessibilityHidden(true)
             }
             .padding(.vertical, 4)
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+        .accessibilityHint("Tap to connect to this mint")
+    }
+
+    private var accessibilityDescription: String {
+        var description = "\(mint.name)"
+        if isSelected { description += ", currently selected" }
+        description += mint.isOnline ? ", online" : ", offline"
+        if !mint.nuts.isEmpty {
+            description += ", supports \(mint.nuts.count) NUTs"
+        }
+        return description
     }
 }
 
@@ -343,7 +365,7 @@ struct AddMintView: View {
     @Binding var isChecking: Bool
     let onAdd: () -> Void
     let onCancel: () -> Void
-    
+
     var body: some View {
         NavigationView {
             Form {
@@ -355,18 +377,21 @@ struct AddMintView: View {
                         #endif
                         .disableAutocorrection(true)
                         .disabled(isChecking)
+                        .accessibilityLabel("Mint URL")
+                        .accessibilityHint("Enter the URL of the Cashu mint you want to add")
                 } header: {
                     Text("Enter Mint URL")
                 } footer: {
                     Text("Example: https://mint.example.com")
                         .font(.caption)
                 }
-                
+
                 if isChecking {
                     Section {
                         HStack {
                             ProgressView()
                                 .scaleEffect(0.8)
+                                .accessibilityLabel("Checking mint connection")
                             Text("Checking mint...")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
@@ -382,11 +407,14 @@ struct AddMintView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onCancel)
                         .disabled(isChecking)
+                        .accessibilityLabel("Cancel adding mint")
                 }
-                
+
                 ToolbarItem(placement: .automatic) {
                     Button("Add", action: onAdd)
                         .disabled(mintURL.isEmpty || isChecking)
+                        .accessibilityLabel("Add mint")
+                        .accessibilityHint(mintURL.isEmpty ? "Enter a URL first" : "Tap to add this mint")
                 }
             }
         }

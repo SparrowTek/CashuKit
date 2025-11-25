@@ -102,34 +102,37 @@ public final class OSLogLogger: LoggerProtocol, @unchecked Sendable {
         function: String,
         line: UInt
     ) {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            guard level >= self.minimumLevel else { return }
-            
-            let fileName = URL(fileURLWithPath: file).lastPathComponent
-            let location = "\(fileName):\(line)"
-            
-            // Format metadata
-            let metadataString = self.formatMetadata(metadata)
-            
-            // Redact sensitive information
-            let redactedMessage = self.redactSensitiveData(in: message)
-            
-            // Create full log message
-            let fullMessage = "\(location) - \(function)\(metadataString) - \(redactedMessage)"
-            
+        // Pre-process values on current thread to avoid Sendable issues
+        guard level >= self.minimumLevel else { return }
+
+        let fileName = URL(fileURLWithPath: file).lastPathComponent
+        let location = "\(fileName):\(line)"
+
+        // Format metadata on current thread
+        let metadataString = self.formatMetadata(metadata)
+
+        // Redact sensitive information on current thread
+        let redactedMessage = self.redactSensitiveData(in: message)
+
+        // Create full log message
+        let fullMessage = "\(location) - \(function)\(metadataString) - \(redactedMessage)"
+
+        // Capture local copies for the queue
+        let loggerCopy = self.logger
+
+        queue.async {
             // Log with appropriate os.log level
             switch level {
             case .debug:
-                self.logger.debug("\(fullMessage, privacy: .public)")
+                loggerCopy.debug("\(fullMessage, privacy: .public)")
             case .info:
-                self.logger.info("\(fullMessage, privacy: .public)")
+                loggerCopy.info("\(fullMessage, privacy: .public)")
             case .warning:
-                self.logger.warning("\(fullMessage, privacy: .public)")
+                loggerCopy.warning("\(fullMessage, privacy: .public)")
             case .error:
-                self.logger.error("\(fullMessage, privacy: .public)")
+                loggerCopy.error("\(fullMessage, privacy: .public)")
             case .critical:
-                self.logger.critical("\(fullMessage, privacy: .public)")
+                loggerCopy.critical("\(fullMessage, privacy: .public)")
             }
         }
     }

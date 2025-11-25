@@ -227,7 +227,7 @@ public struct CashuTransactionListView: View {
 
 struct TransactionRowView: View {
     let transaction: CashuTransaction
-    
+
     var body: some View {
         HStack(spacing: 12) {
             // Icon
@@ -237,21 +237,23 @@ struct TransactionRowView: View {
                 .frame(width: 32, height: 32)
                 .background(transaction.type.color.opacity(0.1))
                 .clipShape(Circle())
-            
+                .accessibilityHidden(true)
+
             // Details
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(transaction.type.rawValue.capitalized)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    
+
                     if transaction.status == .pending {
                         Image(systemName: transaction.status.icon)
                             .font(.caption)
                             .foregroundColor(.orange)
+                            .accessibilityLabel("Pending")
                     }
                 }
-                
+
                 if let memo = transaction.memo {
                     Text(memo)
                         .font(.caption)
@@ -259,9 +261,9 @@ struct TransactionRowView: View {
                         .lineLimit(1)
                 }
             }
-            
+
             Spacer()
-            
+
             // Amount
             VStack(alignment: .trailing, spacing: 4) {
                 HStack(spacing: 2) {
@@ -270,13 +272,22 @@ struct TransactionRowView: View {
                         .fontWeight(.medium)
                 }
                 .foregroundColor(transaction.type.color)
-                
+
                 Text(formatTime(transaction.date))
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    private var accessibilityDescription: String {
+        let direction = (transaction.type == .send || transaction.type == .melt) ? "outgoing" : "incoming"
+        let statusText = transaction.status == .pending ? ", pending" : ""
+        let memoText = transaction.memo.map { ", \($0)" } ?? ""
+        return "\(transaction.type.rawValue.capitalized) transaction, \(direction), \(transaction.amount) satoshis\(statusText)\(memoText)"
     }
     
     private func formatTime(_ date: Date) -> String {
