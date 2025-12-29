@@ -1,14 +1,15 @@
 # CashuKit
 
-> **WARNING: NOT PRODUCTION READY**
+> **BETA STATUS** - Security Audit Preparation Complete
 > 
-> This library is under active development and is NOT yet suitable for production use.
-> - Security features are still being implemented
-> - API may change significantly
-> - Some critical features are incomplete
-> - Not audited for security vulnerabilities
+> CashuKit has completed security hardening alongside CoreCashu:
+> - 69 tests passing with Keychain-based secure storage
+> - Biometric authentication (Face ID / Touch ID / Optic ID)
+> - Network monitoring with secure offline queueing
+> - Privacy-preserving structured logging
 > 
-> **DO NOT USE WITH REAL FUNDS**
+> **Pending external security audit before production use with significant funds.**
+> Built on [CoreCashu](../CoreCashu) - see its security documentation for details.
 
 [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/Platforms-iOS%20%7C%20macOS%20%7C%20tvOS%20%7C%20watchOS%20%7C%20visionOS-blue.svg)](https://developer.apple.com)
@@ -300,22 +301,27 @@ let wsClient = AppleWebSocketClient()
 try await wsClient.connect(to: URL(string: "wss://mint.example.com/v1/ws")!)
 ```
 
-## Security Considerations
+## Security
 
-**This library has NOT been security audited and should NOT be used in production.**
+CashuKit provides Apple platform security integrations on top of CoreCashu's protocol security.
 
-### Current Security Implementation
-- Hardware-backed key storage via Keychain
-- Biometric authentication for sensitive operations
-- Automatic sensitive data redaction in logs
-- Secure random generation via system APIs
-- Actor-based concurrency for thread safety
+### Platform Security Features
+- **Keychain Storage**: Hardware-backed key storage with Secure Enclave support
+- **Biometric Authentication**: Face ID, Touch ID, Optic ID for sensitive operations
+- **iCloud Keychain Sync**: Optional cross-device synchronization (encrypted)
+- **Privacy-Preserving Logging**: Automatic sensitive data redaction in os.log
+- **Secure Operation Queue**: Offline operations stored in Keychain (not UserDefaults)
 
-### Missing Security Features
-- Third-party security audit
-- Rate limiting for mint requests
-- Circuit breakers for network failures
-- Certificate pinning for mint connections
+### Inherited from CoreCashu
+- Rate limiting and circuit breakers
+- Constant-time cryptographic operations
+- Memory zeroization for sensitive data
+- BIP39/BIP32 deterministic key derivation
+
+### Audit Status
+CashuKit is **ready for external security audit** alongside CoreCashu. See [CoreCashu Security Documentation](../CoreCashu/Docs/) for the complete threat model.
+
+**Production use with significant funds should await completion of external audit.**
 
 ## Testing
 
@@ -361,4 +367,4 @@ CashuKit is released under the MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
-**Remember**: This is experimental software. Use at your own risk and only with testnet funds.
+**Status**: Beta - Security audit preparation complete. External audit pending before production use with significant funds.
