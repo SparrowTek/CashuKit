@@ -243,8 +243,13 @@ public actor BiometricAuthManager {
         // Evaluate policy to "arm" the context
         var error: NSError?
         guard securedContext.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-            if let error = error {
-                throw mapLAError(error as! LAError)
+            if let nsError = error {
+                // Safely cast to LAError if possible, otherwise use the error description
+                if let laError = nsError as? LAError {
+                    throw mapLAError(laError)
+                } else {
+                    throw AuthenticationError.failed(nsError.localizedDescription)
+                }
             }
             throw AuthenticationError.biometryNotAvailable
         }

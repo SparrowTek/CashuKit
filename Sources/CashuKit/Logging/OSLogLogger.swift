@@ -10,16 +10,29 @@ import CoreCashu
 import os.log
 
 /// Apple-specific logger that uses os.log for structured logging
+///
+/// ## Thread Safety Analysis
+/// This type is marked `@unchecked Sendable` because:
+/// - `Logger` (os.log) is thread-safe by design
+/// - `subsystem` and `category` are immutable after init
+/// - `_minimumLevel` access is synchronized via `queue` with barrier writes and sync reads
+/// - All mutable state access is protected by `queue`
 public final class OSLogLogger: LoggerProtocol, @unchecked Sendable {
     
     // MARK: - Properties
     
-    public var minimumLevel: LogLevel
+    /// Thread-safe access to minimum log level
+    public var minimumLevel: LogLevel {
+        get { queue.sync { _minimumLevel } }
+        set { queue.async(flags: .barrier) { self._minimumLevel = newValue } }
+    }
+    private var _minimumLevel: LogLevel
+    
     private let subsystem: String
     private let category: String
     private let logger: Logger
     
-    // Serial queue for thread-safe operations
+    // Serial queue for thread-safe operations (concurrent reads, barrier writes)
     private let queue = DispatchQueue(label: "com.cashukit.oslogger", attributes: .concurrent)
     
     // MARK: - Initialization
@@ -36,7 +49,7 @@ public final class OSLogLogger: LoggerProtocol, @unchecked Sendable {
     ) {
         self.subsystem = subsystem ?? Bundle.main.bundleIdentifier ?? "com.cashukit"
         self.category = category
-        self.minimumLevel = minimumLevel
+        self._minimumLevel = minimumLevel
         self.logger = Logger(subsystem: self.subsystem, category: self.category)
     }
     
@@ -255,10 +268,4 @@ public extension OSLogLogger {
         )
     }
     
-    /// Update the minimum log level
-    func setMinimumLevel(_ level: LogLevel) {
-        queue.async(flags: .barrier) {
-            self.minimumLevel = level
-        }
-    }
 }
