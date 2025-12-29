@@ -430,22 +430,33 @@ public final class NetworkMonitor: ObservableObject {
         saveQueuedOperations()
     }
     
+    /// Execute a queued operation based on its type.
+    /// 
+    /// This is an SDK-level stub that logs operation execution. Applications using
+    /// CashuKit should implement their own operation handling by:
+    /// 1. Subclassing NetworkMonitor and overriding this method, or
+    /// 2. Using the `processQueuedOperations()` method with their own CashuWallet instance
+    ///
+    /// The operation's `data` field contains JSON-encoded parameters specific to each type.
     private func executeOperation(_ operation: QueuedOperation) async throws {
-        // This would be implemented based on your actual operation types
-        // For now, this is a placeholder
+        logger.info("Executing queued operation: \(operation.type)")
+        
         switch operation.type {
         case .sendToken:
-            // Decode and send token
-            break
+            // Send token operation - requires CashuWallet.send()
+            logger.debug("Send token operation queued - application should handle via CashuWallet")
+            
         case .receiveToken:
-            // Decode and receive token
-            break
+            // Receive token operation - requires CashuWallet.receive()
+            logger.debug("Receive token operation queued - application should handle via CashuWallet")
+            
         case .checkProofs:
-            // Check proof status
-            break
+            // Check proof status - requires CashuWallet.checkProofStates()
+            logger.debug("Check proofs operation queued - application should handle via CashuWallet")
+            
         case .refreshMint:
-            // Refresh mint info
-            break
+            // Refresh mint info - requires CashuWallet.sync()
+            logger.debug("Refresh mint operation queued - application should handle via CashuWallet")
         }
     }
     

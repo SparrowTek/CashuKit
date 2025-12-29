@@ -314,16 +314,28 @@ public class AppleCashuWallet: ObservableObject {
     }
 
     /// Restore wallet from mnemonic
+    /// - Parameter mnemonic: BIP39 mnemonic phrase (12, 15, 18, 21, or 24 words)
+    /// - Throws: `CashuError.invalidMnemonic` if the mnemonic is invalid
     public func restore(mnemonic: String) async throws {
         guard let url = currentMintURL else {
             throw CashuError.invalidMintConfiguration
+        }
+        
+        // Validate mnemonic before persisting (security: prevents storing invalid data)
+        // This validates:
+        // - Word count (12, 15, 18, 21, or 24 words)
+        // - All words are in BIP39 wordlist
+        // - Checksum is valid
+        guard BIP39.validateMnemonic(mnemonic) else {
+            logger.error("Invalid mnemonic: failed BIP39 validation")
+            throw CashuError.invalidMnemonic
         }
 
         isLoading = true
         defer { isLoading = false }
 
         do {
-            // Save mnemonic securely
+            // Save mnemonic securely (validation passed)
             try await secureStore.saveMnemonic(mnemonic)
 
             // Create wallet configuration
