@@ -9,6 +9,58 @@ import Foundation
 import Network
 import CoreCashu
 import Combine
+import Vault
+
+// MARK: - Secure Storage for Queued Operations
+
+/// Securely stores queued operations using the Keychain instead of UserDefaults
+/// This is important because queued operations may contain sensitive token data
+actor QueuedOperationsStorage {
+    private enum Constants {
+        static let serviceName = "com.cashukit.network"
+        static let accountName = "queued.operations"
+    }
+    
+    private var configuration: KeychainConfiguration {
+        KeychainConfiguration(
+            serviceName: Constants.serviceName,
+            accessGroup: nil,
+            accountName: Constants.accountName
+        )
+    }
+    
+    func save(_ operations: [NetworkMonitor.QueuedOperation]) {
+        guard let data = try? JSONEncoder().encode(operations),
+              let jsonString = String(data: data, encoding: .utf8) else {
+            return
+        }
+        
+        do {
+            // Try to delete existing item first to avoid duplicates
+            try? Vault.deletePrivateKey(keychainConfiguration: configuration)
+            try Vault.savePrivateKey(jsonString, keychainConfiguration: configuration)
+        } catch {
+            // Log but don't fail - queued operations are recoverable
+            print("Failed to save queued operations: \(error)")
+        }
+    }
+    
+    func load() -> [NetworkMonitor.QueuedOperation] {
+        do {
+            let jsonString = try Vault.getPrivateKey(keychainConfiguration: configuration)
+            guard let data = jsonString.data(using: .utf8) else {
+                return []
+            }
+            return try JSONDecoder().decode([NetworkMonitor.QueuedOperation].self, from: data)
+        } catch {
+            return []
+        }
+    }
+    
+    func clear() {
+        try? Vault.deletePrivateKey(keychainConfiguration: configuration)
+    }
+}
 
 /// Monitors network connectivity and manages offline operations
 @MainActor
@@ -138,12 +190,16 @@ public final class NetworkMonitor: ObservableObject {
     private var operationQueue: [QueuedOperation] = []
     private var isProcessingQueue = false
     
+    // Secure storage for queued operations (may contain sensitive token data)
+    private let secureStorage: QueuedOperationsStorage
+    
     // MARK: - Initialization
     
     public init() {
         self.monitor = NWPathMonitor()
         self.queue = DispatchQueue(label: "com.cashukit.networkmonitor", qos: .utility)
         self.logger = OSLogLogger(category: "NetworkMonitor", minimumLevel: .info)
+        self.secureStorage = QueuedOperationsStorage()
         
         // Initialize with unknown status
         self.currentStatus = NetworkStatus(
@@ -214,7 +270,9 @@ public final class NetworkMonitor: ObservableObject {
     public func clearQueue() {
         operationQueue.removeAll()
         queuedOperations = []
-        saveQueuedOperations()
+        Task {
+            await secureStorage.clear()
+        }
         logger.info("Cleared operation queue")
     }
     
@@ -396,22 +454,28 @@ public final class NetworkMonitor: ObservableObject {
         return min(delay, maxRetryDelay)
     }
     
-    // MARK: - Persistence
+    // MARK: - Persistence (Secure Storage)
     
     private func saveQueuedOperations() {
-        guard let data = try? JSONEncoder().encode(operationQueue) else { return }
-        UserDefaults.standard.set(data, forKey: "QueuedOperations")
+        // Use secure Keychain storage instead of UserDefaults
+        // because queued operations may contain sensitive token data
+        Task {
+            await secureStorage.save(operationQueue)
+        }
     }
     
     private func loadQueuedOperations() {
-        guard let data = UserDefaults.standard.data(forKey: "QueuedOperations"),
-              let operations = try? JSONDecoder().decode([QueuedOperation].self, from: data) else {
-            return
+        // Load from secure Keychain storage
+        Task {
+            let operations = await secureStorage.load()
+            await MainActor.run {
+                self.operationQueue = operations
+                self.queuedOperations = operations
+                if !operations.isEmpty {
+                    self.logger.info("Loaded \(operations.count) queued operations from secure storage")
+                }
+            }
         }
-        
-        operationQueue = operations
-        queuedOperations = operations
-        logger.info("Loaded \(operations.count) queued operations")
     }
 }
 

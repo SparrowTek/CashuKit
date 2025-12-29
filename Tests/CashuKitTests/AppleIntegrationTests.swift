@@ -195,25 +195,6 @@ struct AppleIntegrationTests {
         #expect(Bool(true))
     }
     
-    @Test("SwiftUI view components initialization")
-    func testSwiftUIComponents() async throws {
-        let wallet = await AppleCashuWallet()
-        
-        // Test view creation (not rendering, just initialization)
-        let balanceView = await CashuBalanceView(wallet: wallet)
-        let _ = balanceView  // Use to avoid warning
-        
-        let sendReceiveView = await CashuSendReceiveView(wallet: wallet)
-        let _ = sendReceiveView
-        
-        let transactionView = await CashuTransactionListView(wallet: wallet)
-        let _ = transactionView
-        
-        let mintView = await MintSelectionView(wallet: wallet)
-        let _ = mintView
-        
-        #expect(Bool(true))
-    }
 }
 
 @Suite("Apple Platform-Specific Tests")

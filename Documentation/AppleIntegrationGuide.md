@@ -12,10 +12,12 @@ CashuKit provides deep integration with Apple platforms, leveraging native frame
 4. [Biometric Authentication](#biometric-authentication)
 5. [Network Handling](#network-handling)
 6. [Background Execution](#background-execution)
-7. [SwiftUI Components](#swiftui-components)
+7. [Building Your Own UI](#building-your-own-ui)
 8. [App Extensions](#app-extensions)
 9. [Platform-Specific Features](#platform-specific-features)
 10. [App Store Submission](#app-store-submission)
+
+> **Note:** CashuKit is a headless SDK and does not provide any UI components. You are expected to build your own UI using the APIs provided.
 
 ## Platform Requirements
 
@@ -283,9 +285,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 }
 ```
 
-## SwiftUI Components
+## Building Your Own UI
 
-### Balance View
+CashuKit is a headless SDK - it provides the wallet logic but no UI components. You are expected to build your own SwiftUI views using the `AppleCashuWallet` class.
+
+### Example: Balance View
 
 ```swift
 struct WalletScreen: View {
@@ -293,52 +297,113 @@ struct WalletScreen: View {
     
     var body: some View {
         VStack {
-            // Displays balance with connection status
-            CashuBalanceView(wallet: wallet)
-                .padding()
+            Text("\(wallet.balance) sats")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+            
+            if wallet.isLoading {
+                ProgressView()
+            }
+            
+            if !wallet.isConnected {
+                Text("Not connected")
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+    }
+}
+```
+
+### Example: Send/Receive Interface
+
+```swift
+struct SendReceiveView: View {
+    @ObservedObject var wallet: AppleCashuWallet
+    @State private var amount: String = ""
+    @State private var tokenInput: String = ""
+    
+    var body: some View {
+        Form {
+            Section("Send") {
+                TextField("Amount", text: $amount)
+                    .keyboardType(.numberPad)
+                Button("Send") {
+                    Task {
+                        if let amt = Int(amount) {
+                            let token = try await wallet.send(amount: amt)
+                            // Handle token...
+                        }
+                    }
+                }
+            }
+            
+            Section("Receive") {
+                TextField("Paste token", text: $tokenInput)
+                Button("Receive") {
+                    Task {
+                        try await wallet.receive(token: tokenInput)
+                    }
+                }
+            }
         }
     }
 }
 ```
 
-### Send/Receive Interface
+### Example: Transaction History
+
+Since CashuKit doesn't persist transaction history, you'll need to implement your own storage:
 
 ```swift
-struct TransactionView: View {
-    @StateObject private var wallet = AppleCashuWallet()
+struct TransactionHistoryView: View {
+    @ObservedObject var wallet: AppleCashuWallet
+    @State private var transactions: [MyTransaction] = []
     
     var body: some View {
-        CashuSendReceiveView(wallet: wallet)
-            .navigationTitle("Send & Receive")
-    }
-}
-```
-
-### Transaction History
-
-```swift
-struct HistoryView: View {
-    @StateObject private var wallet = AppleCashuWallet()
-    
-    var body: some View {
-        CashuTransactionListView(wallet: wallet)
-            .searchable(text: $searchText)
-            .refreshable {
-                await wallet.refreshTransactions()
+        List(transactions) { transaction in
+            HStack {
+                Text(transaction.type == .send ? "Sent" : "Received")
+                Spacer()
+                Text("\(transaction.amount) sats")
             }
+        }
+        .refreshable {
+            await wallet.refreshBalance()
+        }
     }
 }
 ```
 
-### Mint Selection
+### Example: Mint Selection
 
 ```swift
-struct SettingsView: View {
-    @StateObject private var wallet = AppleCashuWallet()
+struct MintSettingsView: View {
+    @ObservedObject var wallet: AppleCashuWallet
+    @State private var mintURL: String = ""
     
     var body: some View {
-        MintSelectionView(wallet: wallet)
-            .navigationTitle("Mint Settings")
+        Form {
+            Section("Current Mint") {
+                if let url = wallet.currentMintURL {
+                    Text(url.absoluteString)
+                } else {
+                    Text("Not connected")
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Section("Connect to Mint") {
+                TextField("Mint URL", text: $mintURL)
+                Button("Connect") {
+                    Task {
+                        if let url = URL(string: mintURL) {
+                            try await wallet.connect(to: url)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 ```
@@ -461,7 +526,10 @@ struct ImmersiveWalletView: View {
             content.add(balanceEntity)
         }
         .ornament(attachmentAnchor: .scene(.bottom)) {
-            CashuBalanceView(wallet: wallet)
+            // Build your own balance view
+            Text("\(wallet.balance) sats")
+                .font(.title)
+                .padding()
                 .glassBackgroundEffect()
         }
     }
