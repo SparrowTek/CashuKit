@@ -24,7 +24,7 @@ struct AppleIntegrationTests {
     
     @Test("Keychain integration with wallet")
     func testKeychainIntegration() async throws {
-        let wallet = await AppleCashuWallet()
+        let _ = await AppleCashuWallet()
         
         // Test that wallet can interact with keychain
         // This is a smoke test to ensure no crashes
@@ -208,7 +208,7 @@ struct ApplePlatformTests {
         let _ = wallet
         
         // Test biometric type detection
-        let bioManager = await BiometricAuthManager.shared
+        let bioManager = BiometricAuthManager.shared
         await bioManager.checkBiometricAvailability()
         let bioType = await bioManager.biometricType
         
@@ -225,7 +225,7 @@ struct ApplePlatformTests {
         let _ = wallet
         
         // Test biometric type detection
-        let bioManager = await BiometricAuthManager.shared
+        let bioManager = BiometricAuthManager.shared
         await bioManager.checkBiometricAvailability()
         let bioType = await bioManager.biometricType
         

@@ -29,15 +29,15 @@ struct CashuKitTests {
     func testKeychainInit() {
         // Test basic initialization
         let store1 = KeychainSecureStore()
-        #expect(store1 != nil)
+        #expect(type(of: store1) == KeychainSecureStore.self)
         
         // Test with access group
         let store2 = KeychainSecureStore(accessGroup: "com.test.group")
-        #expect(store2 != nil)
+        #expect(type(of: store2) == KeychainSecureStore.self)
         
         // Test with synchronizable
         let store3 = KeychainSecureStore(synchronizable: true)
-        #expect(store3 != nil)
+        #expect(type(of: store3) == KeychainSecureStore.self)
     }
     
     @Test("Network monitor instances")
