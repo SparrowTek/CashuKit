@@ -14,6 +14,15 @@ public struct CashuKit {
     
     /// Check if CashuKit is properly configured
     public static var isConfigured: Bool {
-        return true
+        return configurationIssues().isEmpty
+    }
+
+    /// Return a list of runtime configuration issues.
+    public static func configurationIssues() -> [String] {
+        var issues: [String] = []
+        if Bundle.main.bundleIdentifier == nil {
+            issues.append("Missing bundle identifier")
+        }
+        return issues
     }
 }

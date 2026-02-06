@@ -1,5 +1,5 @@
 {
-  "originHash" : "6c5f3f65c1ff3106a182610862991c67aa2f2eed904f9675d2a5450c82622598",
+  "originHash" : "835e818ab457b5ced38a9dcf7e934fcce1456edee52c5907e061a62aeb50bd7c",
   "pins" : [
     {
       "identity" : "bdk-swift",
@@ -17,15 +17,6 @@
       "state" : {
         "revision" : "e07e00fa1fd435143a2dcf8b7eec9a7710b2fdfe",
         "version" : "5.7.0"
-      }
-    },
-    {
-      "identity" : "corecashu",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/SparrowTek/CoreCashu.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "fa35af6af0a49229213d5de1f1f7299716d6d096"
       }
     },
     {
@@ -51,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/valpackett/SwiftCBOR.git",
       "state" : {
-        "revision" : "04ccff117f6549121d5721ec84fdf0162122b90e",
-        "version" : "0.5.0"
+        "revision" : "fd929a6d8f7651ce0f63fc99397fd5762358cc29",
+        "version" : "0.6.0"
       }
     },
     {

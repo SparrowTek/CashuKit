@@ -40,8 +40,7 @@ actor QueuedOperationsStorage {
             try? Vault.deletePrivateKey(keychainConfiguration: configuration)
             try Vault.savePrivateKey(jsonString, keychainConfiguration: configuration)
         } catch {
-            // Log but don't fail - queued operations are recoverable
-            print("Failed to save queued operations: \(error)")
+            // Intentionally ignore persistence errors here; caller keeps the in-memory queue.
         }
     }
     

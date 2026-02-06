@@ -17,7 +17,6 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
     private let session: URLSession
     private let configuration: WebSocketConfiguration
     private var pingTask: Task<Void, Never>?
-    private var receiveTask: Task<Void, Never>?
     private var _isConnected: Bool = false
     
     // MARK: - Initialization
@@ -37,7 +36,6 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
     deinit {
         // Ensure all tasks are cancelled when deallocating
         pingTask?.cancel()
-        receiveTask?.cancel()
         webSocketTask?.cancel()
     }
     
@@ -66,21 +64,25 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
         }
         
         // Create the WebSocket task
-        webSocketTask = session.webSocketTask(with: request)
+        let task = session.webSocketTask(with: request)
+        webSocketTask = task
         
         // Configure maximum message size
-        webSocketTask?.maximumMessageSize = configuration.maxFrameSize
+        task.maximumMessageSize = configuration.maxFrameSize
         
         // Start the connection
-        webSocketTask?.resume()
+        task.resume()
         
-        // Wait for connection to be established
-        // URLSessionWebSocketTask doesn't provide a direct connection callback,
-        // so we mark as connected after resume
-        _isConnected = true
-        
-        // Start listening for messages
-        startReceiving()
+        do {
+            // Validate the connection with a ping probe before marking it connected.
+            try await sendPing(on: task)
+            _isConnected = true
+        } catch {
+            task.cancel()
+            webSocketTask = nil
+            _isConnected = false
+            throw WebSocketError.connectionFailed(error.localizedDescription)
+        }
         
         // Start ping timer if configured
         if configuration.pingInterval > 0 {
@@ -96,7 +98,11 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
         let message = URLSessionWebSocketTask.Message.string(text)
         
         do {
-            try await task.send(message)
+            try await withTimeout(seconds: configuration.connectionTimeout) {
+                try await task.send(message)
+            }
+        } catch let webSocketError as WebSocketError {
+            throw webSocketError
         } catch {
             // Check if connection was closed
             if !_isConnected {
@@ -114,7 +120,11 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
         let message = URLSessionWebSocketTask.Message.data(data)
         
         do {
-            try await task.send(message)
+            try await withTimeout(seconds: configuration.connectionTimeout) {
+                try await task.send(message)
+            }
+        } catch let webSocketError as WebSocketError {
+            throw webSocketError
         } catch {
             // Check if connection was closed
             if !_isConnected {
@@ -130,7 +140,9 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
         }
         
         do {
-            let message = try await task.receive()
+            let message = try await withTimeout(seconds: configuration.connectionTimeout) {
+                try await task.receive()
+            }
             
             switch message {
             case .string(let text):
@@ -140,6 +152,8 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
             @unknown default:
                 throw WebSocketError.receiveFailed("Unknown message type")
             }
+        } catch let webSocketError as WebSocketError {
+            throw webSocketError
         } catch {
             // Check if connection was closed
             if !_isConnected {
@@ -154,15 +168,7 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
             throw WebSocketError.notConnected
         }
         
-        return try await withCheckedThrowingContinuation { continuation in
-            task.sendPing { error in
-                if let error = error {
-                    continuation.resume(throwing: WebSocketError.sendFailed("Ping failed: \(error.localizedDescription)"))
-                } else {
-                    continuation.resume()
-                }
-            }
-        }
+        try await sendPing(on: task)
     }
     
     public func close(code: WebSocketCloseCode, reason: Data?) async throws {
@@ -181,32 +187,11 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
     public func disconnect() async {
         _isConnected = false
         stopPingTimer()
-        receiveTask?.cancel()
-        receiveTask = nil
         webSocketTask?.cancel()
         webSocketTask = nil
     }
     
     // MARK: - Private Methods
-    
-    private func startReceiving() {
-        guard let task = webSocketTask else { return }
-        
-        receiveTask?.cancel()
-        receiveTask = Task {
-            do {
-                // This will keep the connection alive by continuously receiving
-                while _isConnected && !Task.isCancelled {
-                    _ = try await task.receive()
-                }
-            } catch {
-                // Connection closed or error occurred
-                if !Task.isCancelled {
-                    await disconnect()
-                }
-            }
-        }
-    }
     
     private func startPingTimer() {
         stopPingTimer()
@@ -228,6 +213,46 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
     private func stopPingTimer() {
         pingTask?.cancel()
         pingTask = nil
+    }
+    
+    private func sendPing(on task: URLSessionWebSocketTask) async throws {
+        try await withTimeout(seconds: configuration.connectionTimeout) {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                task.sendPing { error in
+                    if let error {
+                        continuation.resume(throwing: WebSocketError.sendFailed("Ping failed: \(error.localizedDescription)"))
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let timeoutNanoseconds = UInt64(max(seconds, 0.1) * 1_000_000_000)
+        
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+                throw WebSocketError.timeout
+            }
+            
+            guard let firstResult = try await group.next() else {
+                group.cancelAll()
+                throw WebSocketError.timeout
+            }
+            
+            group.cancelAll()
+            return firstResult
+        }
     }
 }
 
