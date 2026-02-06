@@ -116,6 +116,22 @@ let logger = OSLogLogger(
 logger.info("Sending transaction to mint")
 ```
 
+### AppleWebSocketClient
+
+NUT-17 WebSocket support is provided by `AppleWebSocketClient`:
+
+- `connect(to:)` performs a ping probe before marking the client connected.
+- `isConnected` only becomes `true` after connection validation succeeds.
+- `send`, `receive`, and `ping` are bounded by `WebSocketConfiguration.connectionTimeout`.
+
+```swift
+let wsClient = AppleWebSocketClient(
+    configuration: WebSocketConfiguration(connectionTimeout: 10)
+)
+
+try await wsClient.connect(to: wsURL)
+```
+
 ## Data Flow
 
 ### Minting Flow

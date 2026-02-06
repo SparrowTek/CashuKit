@@ -295,11 +295,19 @@ logger.info("Sending transaction", metadata: [
 
 ```swift
 // Create WebSocket client
-let wsClient = AppleWebSocketClient()
+let wsClient = AppleWebSocketClient(
+    configuration: WebSocketConfiguration(
+        connectionTimeout: 10,
+        pingInterval: 30
+    )
+)
 
 // Connect and subscribe
 try await wsClient.connect(to: URL(string: "wss://mint.example.com/v1/ws")!)
 ```
+
+`connect(to:)` validates the connection with a ping probe before `isConnected` is set to `true`.
+`send`, `receive`, and `ping` are bounded by `connectionTimeout` and throw `WebSocketError.timeout` on slow or unresponsive links.
 
 ## Security
 
