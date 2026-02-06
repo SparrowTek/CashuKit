@@ -17,8 +17,7 @@ let package = Package(
             targets: ["CashuKit"]),
     ],
     dependencies: [
-        .package(path: "../CoreCashu"),
-//        .package(url: "https://github.com/SparrowTek/CoreCashu.git", branch: "main"),
+        .package(url: "https://github.com/SparrowTek/CoreCashu.git", branch: "main"),
         .package(url: "https://github.com/bitcoindevkit/bdk-swift.git", from: "2.0.0"),
         .package(url: "https://github.com/SparrowTek/Vault.git", from: "1.0.0"),
     ],
