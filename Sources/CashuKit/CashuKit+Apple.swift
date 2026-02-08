@@ -433,6 +433,47 @@ public class AppleCashuWallet: ObservableObject {
         }
     }
 
+    /// Request a mint quote (Lightning invoice for receiving)
+    /// - Parameter amount: Amount in sats to mint
+    /// - Returns: MintQuoteResponse containing the Lightning invoice and quote ID
+    public func requestMintQuote(amount: Int) async throws -> MintQuoteResponse {
+        guard let wallet else {
+            throw CashuError.walletNotInitialized
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let response = try await wallet.requestMintQuote(amount: amount)
+            logger.info("Requested mint quote for \(amount) sats")
+            return response
+        } catch {
+            lastError = error
+            logger.error("Failed to request mint quote: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    /// Check mint quote status
+    /// - Parameter quoteID: The quote identifier to check
+    /// - Returns: MintQuoteResponse with current state
+    public func checkMintQuote(_ quoteID: String) async throws -> MintQuoteResponse {
+        guard let wallet else {
+            throw CashuError.walletNotInitialized
+        }
+
+        do {
+            let response = try await wallet.checkMintQuote(quoteID)
+            logger.info("Checked mint quote \(quoteID): state=\(response.state ?? "unknown")")
+            return response
+        } catch {
+            lastError = error
+            logger.error("Failed to check mint quote: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
     /// Get balance breakdown
     public func getBalanceBreakdown() async throws -> BalanceBreakdown {
         guard let wallet = wallet else {
