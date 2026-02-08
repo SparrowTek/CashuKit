@@ -149,12 +149,12 @@ public class AppleCashuWallet: ObservableObject {
         logger.info("Disconnected from mint")
     }
 
-    /// Mint tokens from a payment request
+    /// Mint tokens for a paid quote
     /// - Parameters:
+    ///   - quoteID: The mint quote identifier (obtained from requesting a mint quote)
     ///   - amount: Amount to mint
-    ///   - paymentRequest: Lightning invoice or other payment request
     /// - Returns: MintResult with the minted proofs
-    public func mint(amount: Int, paymentRequest: String) async throws -> MintResult {
+    public func mint(quoteID: String, amount: Int) async throws -> MintResult {
         guard let wallet = wallet else {
             throw CashuError.walletNotInitialized
         }
@@ -164,8 +164,8 @@ public class AppleCashuWallet: ObservableObject {
 
         do {
             let result = try await wallet.mint(
-                amount: amount,
-                paymentRequest: paymentRequest
+                quoteID: quoteID,
+                amount: amount
             )
 
             // Update local proofs

@@ -6,16 +6,24 @@
 //
 
 import Foundation
-import BackgroundTasks
+@preconcurrency import BackgroundTasks
 import CoreCashu
 import Combine
 
 /// Manages background tasks and operations that continue when app is suspended
 public actor BackgroundTaskManager {
-    
+
     // MARK: - Types
-    
-    public enum TaskType: String, CaseIterable {
+
+    #if os(iOS) || os(tvOS)
+    /// Wrapper to safely send BGTask across isolation boundaries.
+    /// BGTask is always used on a single actor (this one), so this is safe.
+    private struct SendableBGTask: @unchecked Sendable {
+        let task: BGTask
+    }
+    #endif
+
+    public enum TaskType: String, CaseIterable, Sendable {
         case balanceRefresh = "com.cashukit.balance.refresh"
         case proofValidation = "com.cashukit.proof.validation"
         case tokenSync = "com.cashukit.token.sync"
@@ -117,9 +125,11 @@ public actor BackgroundTaskManager {
             BGTaskScheduler.shared.register(
                 forTaskWithIdentifier: taskType.identifier,
                 using: nil
-            ) { [weak self] task in
-                Task {
-                    await self?.handleBackgroundTask(task, type: taskType)
+            ) { task in
+                let wrappedTask = SendableBGTask(task: task)
+                let type = taskType
+                Task { [weak self] in
+                    await self?.handleBackgroundTask(wrappedTask.task, type: type)
                 }
             }
             registeredTasks.insert(taskType)
@@ -572,9 +582,6 @@ public extension BackgroundTaskManager {
         logger.info("Stored completion handler for session: \(identifier)")
     }
     
-    func clearCompletionHandler(for identifier: String) {
-        backgroundCompletionHandlers[identifier] = nil
-    }
 }
 #endif
 
