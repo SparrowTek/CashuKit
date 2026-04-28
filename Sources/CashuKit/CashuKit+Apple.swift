@@ -104,7 +104,7 @@ public class AppleCashuWallet: ObservableObject {
 
         do {
             // Create wallet configuration for CoreCashu
-            let walletConfig = WalletConfiguration(
+            let walletConfig = try WalletConfiguration(
                 mintURL: mintURL.absoluteString,
                 unit: "sat",
                 retryAttempts: configuration.retryAttempts,
@@ -339,7 +339,7 @@ public class AppleCashuWallet: ObservableObject {
             try await secureStore.saveMnemonic(mnemonic)
 
             // Create wallet configuration
-            let walletConfig = WalletConfiguration(
+            let walletConfig = try WalletConfiguration(
                 mintURL: url.absoluteString,
                 unit: "sat",
                 retryAttempts: configuration.retryAttempts,
