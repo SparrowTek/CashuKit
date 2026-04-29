@@ -35,14 +35,14 @@ struct KeychainSecureStoreTests {
             try await testStore.saveMnemonic(testMnemonic)
             
             // Load mnemonic
-            let loaded = try await testStore.loadMnemonic()
+            let loaded = try await testStore.loadMnemonicString()
             #expect(loaded == testMnemonic)
             
             // Clean up
             try await testStore.deleteMnemonic()
             
             // Verify deletion
-            let afterDelete = try await testStore.loadMnemonic()
+            let afterDelete = try await testStore.loadMnemonicString()
             #expect(afterDelete == nil)
             
             return true
@@ -65,7 +65,7 @@ struct KeychainSecureStoreTests {
             try await testStore.saveMnemonic(secondMnemonic)
             
             // Should get second
-            let loaded = try await testStore.loadMnemonic()
+            let loaded = try await testStore.loadMnemonicString()
             #expect(loaded == secondMnemonic)
             
             // Clean up
@@ -231,7 +231,7 @@ struct KeychainSecureStoreTests {
             try await testStore.clearAll()
             
             // Verify all cleared
-            let mnemonic = try await testStore.loadMnemonic()
+            let mnemonic = try await testStore.loadMnemonicString()
             let seed = try await testStore.loadSeed()
             let token = try await testStore.loadAccessToken(mintURL: mintURL)
             
@@ -253,7 +253,7 @@ struct KeychainSecureStoreTests {
         
         let result = try await withKeychainAccess {
             // Try to load non-existent data
-            let mnemonic = try await testStore.loadMnemonic()
+            let mnemonic = try await testStore.loadMnemonicString()
             let seed = try await testStore.loadSeed()
             let token = try await testStore.loadAccessToken(mintURL: mintURL)
             

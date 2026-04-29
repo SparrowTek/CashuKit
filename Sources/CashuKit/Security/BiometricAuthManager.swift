@@ -89,24 +89,36 @@ public actor BiometricAuthManager {
     }
     
     // MARK: - Properties
-    
+
     public static let shared = BiometricAuthManager()
-    
-    private let context = LAContext()
+
+    /// Test-injectable boundary for LAContext-style availability checks. Production code uses
+    /// the default `LAContextProvider` which wraps `LAContext`. Tests pass a fake to drive
+    /// `checkBiometricAvailability` and `authenticate` paths without a real biometric stack.
+    /// Phase 8.12 follow-up (2026-04-29).
+    private let contextProvider: any LAContextProviding
     private var policy: AuthenticationPolicy = .default
     private let logger: OSLogLogger
-    
+
     public private(set) var biometricType: BiometricType = .none
     public private(set) var isAvailable: Bool = false
     public private(set) var isEnrolled: Bool = false
-    
+
     // MARK: - Initialization
-    
+
     private init() {
+        self.contextProvider = DefaultLAContextProvider()
         self.logger = OSLogLogger(category: "BiometricAuth", minimumLevel: .info)
         Task {
             await checkBiometricAvailability()
         }
+    }
+
+    /// Internal initializer for tests. Pass a fake `LAContextProviding` to drive the manager
+    /// without a real biometric subsystem.
+    internal init(contextProvider: any LAContextProviding) {
+        self.contextProvider = contextProvider
+        self.logger = OSLogLogger(category: "BiometricAuth", minimumLevel: .info)
     }
     
     // MARK: - Public Methods
@@ -119,15 +131,16 @@ public actor BiometricAuthManager {
     
     /// Check if biometric authentication is available and configured
     public func checkBiometricAvailability() {
+        let context = contextProvider.makeContext()
         var error: NSError?
-        
+
         // Check if biometry is available
         let canEvaluate = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
-        
+
         if canEvaluate {
             isAvailable = true
             isEnrolled = true
-            
+
             // Determine biometric type
             switch context.biometryType {
             case .none:
@@ -141,12 +154,12 @@ public actor BiometricAuthManager {
             @unknown default:
                 biometricType = .none
             }
-            
+
             logger.info("Biometric authentication available: \(biometricType.displayName)")
         } else {
             isAvailable = false
             biometricType = .none
-            
+
             if let error = error {
                 switch error.code {
                 case LAError.biometryNotEnrolled.rawValue:
@@ -257,10 +270,13 @@ public actor BiometricAuthManager {
         return securedContext
     }
     
-    /// Invalidate the context (should be called when app goes to background)
+    /// Invalidate any cached contexts (should be called when app goes to background).
+    /// Phase 8.12 follow-up: the manager no longer caches a single `LAContext`; each
+    /// availability/auth check calls `contextProvider.makeContext()`. This method is retained
+    /// as a no-op for API compatibility — the caller's intent (drop biometric state) is now
+    /// implicit because contexts are short-lived.
     public func invalidate() {
-        context.invalidate()
-        logger.debug("Biometric context invalidated")
+        logger.debug("Biometric context invalidated (no-op — contexts are now short-lived)")
     }
     
     // MARK: - Private Methods

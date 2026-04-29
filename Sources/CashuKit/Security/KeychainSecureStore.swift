@@ -92,15 +92,20 @@ public actor KeychainSecureStore: SecureStore {
     // MARK: - SecureStore Protocol Implementation
     
     // MARK: Mnemonic Operations
-    
-    public func saveMnemonic(_ mnemonic: String) async throws {
-        try saveItem(mnemonic, account: KeychainConstants.mnemonicAccount)
+
+    public func saveMnemonic(_ mnemonic: SensitiveString) async throws {
+        try mnemonic.withString { plaintext in
+            try saveItem(plaintext, account: KeychainConstants.mnemonicAccount)
+        }
     }
-    
-    public func loadMnemonic() async throws -> String? {
-        try loadItem(account: KeychainConstants.mnemonicAccount)
+
+    public func loadMnemonic() async throws -> SensitiveString? {
+        guard let raw: String = try loadItem(account: KeychainConstants.mnemonicAccount) else {
+            return nil
+        }
+        return SensitiveString(raw)
     }
-    
+
     public func deleteMnemonic() async throws {
         try deleteItem(account: KeychainConstants.mnemonicAccount)
     }

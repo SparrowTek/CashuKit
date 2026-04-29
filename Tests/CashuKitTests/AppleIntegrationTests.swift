@@ -97,7 +97,7 @@ struct AppleIntegrationTests {
             #expect(hasData == true)
             
             // Load
-            let loaded = try await secureStore.loadMnemonic()
+            let loaded = try await secureStore.loadMnemonicString()
             #expect(loaded == testMnemonic)
             
             // Clean up

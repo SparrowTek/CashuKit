@@ -8,6 +8,24 @@ CashuKit is currently **pre-1.0** and tracks CoreCashu's roadmap. CoreCashu's ow
 `CHANGELOG.md` is the source of truth for protocol-level changes; this file records
 CashuKit-specific deltas plus the propagation effects of CoreCashu releases.
 
+## [Unreleased] — Tracks CoreCashu Phase 8 follow-ups (2026-04-29)
+
+### Breaking
+
+- **Inherited from CoreCashu Phase 8.10 follow-up**: `SecureStore.saveMnemonic`/`loadMnemonic`
+  now take/return `SensitiveString` as their canonical types. CashuKit's `KeychainSecureStore`
+  was updated; `AppleCashuWallet.getMnemonic()` keeps returning `String?` for UI compatibility
+  (forwards to `loadMnemonicString()`); new `getMnemonicSensitive()` returns `SensitiveString?`
+  for code that wants the wrapped form.
+
+### Added
+
+- **`Sources/CashuKit/Security/LAContextProviding.swift`** — protocol seam over `LAContext`.
+  Lets tests inject a fake biometric subsystem.
+- **5 fake-driven `BiometricAuthManager` behavior tests** in
+  `Tests/CashuKitTests/BiometricAuthManagerBehaviorTests.swift`.
+- **84 CashuKit tests pass** (was 78 → +6).
+
 ## [Unreleased] — Tracks CoreCashu Phase 7
 
 ### Breaking

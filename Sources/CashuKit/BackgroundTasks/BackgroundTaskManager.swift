@@ -198,6 +198,11 @@ public actor BackgroundTaskManager {
         }
     }
     
+    /// Test-only snapshot of pending operations. Phase 8.12 follow-up.
+    internal func _testingPendingOperations() -> [PendingOperation] {
+        pendingOperations
+    }
+
     /// Execute pending operations
     public func executePendingOperations() async {
         let operations = pendingOperations.filter { !$0.isExecuting && $0.completedAt == nil }

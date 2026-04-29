@@ -71,4 +71,30 @@ struct BackgroundTaskManagerPhase812Tests {
         #expect(decoded.data == original.data)
         #expect(abs(decoded.createdAt.timeIntervalSince(original.createdAt)) < 1)
     }
+
+    @Test("addPendingOperation persists the operation through UserDefaults round-trip")
+    func addPendingOperationPersists() async {
+        // Clear any leftover state from previous runs. UserDefaults is shared across the
+        // process, so we have to scrub before constructing the manager.
+        UserDefaults.standard.removeObject(forKey: "PendingOperations")
+
+        let monitor = await NetworkMonitor()
+        let manager = BackgroundTaskManager(networkMonitor: monitor)
+        let payload = Data("test-data".utf8)
+
+        await manager.addPendingOperation(type: "test-op", data: payload)
+
+        // Pull straight from UserDefaults — addPendingOperation persists on every call,
+        // bypassing the init-time load race that affects in-memory snapshots.
+        guard let raw = UserDefaults.standard.data(forKey: "PendingOperations"),
+              let decoded = try? JSONDecoder().decode([BackgroundTaskManager.PendingOperation].self, from: raw) else {
+            Issue.record("expected pending operations to persist to UserDefaults")
+            return
+        }
+        let entry = decoded.first(where: { $0.type == "test-op" })
+        #expect(entry != nil)
+        #expect(entry?.data == payload)
+
+        UserDefaults.standard.removeObject(forKey: "PendingOperations")
+    }
 }

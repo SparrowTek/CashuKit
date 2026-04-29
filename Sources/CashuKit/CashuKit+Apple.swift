@@ -388,8 +388,16 @@ public class AppleCashuWallet: ObservableObject {
         }
     }
 
-    /// Get stored mnemonic
+    /// Get stored mnemonic, copied out as a `String` for compatibility with caller UI code.
+    /// Prefer ``getMnemonicSensitive()`` when you can hold the result inside a
+    /// ``SensitiveString`` scope.
     public func getMnemonic() async throws -> String? {
+        try await secureStore.loadMnemonicString()
+    }
+
+    /// Get stored mnemonic wrapped in ``SensitiveString``. The plaintext is held under the
+    /// wrapper's lock and wiped on deinit; callers should access it via `withString`.
+    public func getMnemonicSensitive() async throws -> SensitiveString? {
         try await secureStore.loadMnemonic()
     }
 
