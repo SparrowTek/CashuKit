@@ -1,17 +1,18 @@
 # CashuKit
 
-> **BETA STATUS** - Security Audit Preparation Complete
-> 
-> CashuKit has completed security hardening alongside CoreCashu:
-> - 69 tests passing with Keychain-based secure storage
-> - Biometric authentication (Face ID / Touch ID / Optic ID)
-> - Network monitoring with secure offline queueing
-> - Privacy-preserving structured logging
-> 
+> **PRE-1.0 / BETA** — tracks CoreCashu's API freeze.
+>
+> CashuKit is the Apple-platform layer over [CoreCashu](../CoreCashu). It builds clean on
+> macOS and iOS Simulator with strict Swift 6 concurrency and 69 Swift Testing tests
+> green. After CoreCashu's Phase 7.1 (`@_exported` removal), consumers that use
+> `P256K`, `CryptoSwift`, or `BigInt` types directly must add those packages as their
+> own dependencies — they are no longer transitively re-exported.
+>
 > **Pending external security audit before production use with significant funds.**
-> Built on [CoreCashu](../CoreCashu) - see its security documentation for details.
+> See [`../CoreCashu/Docs/NUT_STATUS.md`](../CoreCashu/Docs/NUT_STATUS.md) for which
+> NUTs are safe to advertise and which are still gated off.
 
-[![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
+[![Swift 6.1](https://img.shields.io/badge/Swift-6.1-orange.svg)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/Platforms-iOS%20%7C%20macOS%20%7C%20tvOS%20%7C%20watchOS%20%7C%20visionOS-blue.svg)](https://developer.apple.com)
 [![Swift Package Manager](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)](https://github.com/apple/swift-package-manager)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -63,13 +64,19 @@ For UI implementation, refer to the example app or build your own using the `App
 - **Structured Logging**: Privacy-preserving os.log integration
 
 ### Protocol Features (via CoreCashu)
-- Complete implementation of Cashu NIPs (NUT-00 through NUT-22)
-- Lightning Network integration (mint & melt)
-- Deterministic secrets with BIP39/BIP32
-- Advanced spending conditions (P2PK, HTLCs)
-- Multi-path payments
-- WebSocket subscriptions
-- Token state management
+- Spec-correct NUTs — see [CoreCashu's NUT_STATUS](../CoreCashu/Docs/NUT_STATUS.md)
+- Lightning Network mint & melt (BOLT11)
+- Deterministic secrets with BIP39/BIP32 (PBKDF2-HMAC-SHA-512, 2048 iterations)
+- Advanced spending conditions: P2PK (NUT-11) and HTLC (NUT-14) end-to-end
+- Token state management (NUT-07)
+- Capability-gated optional NUTs — operations refuse to execute when the mint doesn't advertise support
+
+### Not yet supported / gated off
+- NUT-15 multi-path payments (type definitions only)
+- NUT-17 WebSocket reconnect-and-resume integration test (HTTP-only MockMint)
+- NUT-21 Clear auth / JWT (signature verification is a stub)
+- NUT-22 Blind auth / BAT (endpoint and header shape don't match spec)
+- NUT-23, NUT-25 through NUT-29
 
 ## Installation
 
