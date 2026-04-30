@@ -87,6 +87,7 @@ public actor BackgroundTaskManager {
     private let urlSessionDelegate: URLSessionDelegateHandler
     private let networkMonitor: NetworkMonitor
     var backgroundCompletionHandlers: [String: @Sendable () -> Void] = [:]
+    private var downloadCompletionHandlers: [Int: @Sendable (Result<Data, any Error>) -> Void] = [:]
     
     // Background URL Session
     private lazy var backgroundURLSession: URLSession = {
@@ -249,20 +250,25 @@ public actor BackgroundTaskManager {
     /// Start a background URL session download
     public func startBackgroundDownload(
         from url: URL,
-        completion: @escaping (Result<Data, any Error>) -> Void
+        completion: @escaping @Sendable (Result<Data, any Error>) -> Void
     ) -> URLSessionDownloadTask {
         let task = backgroundURLSession.downloadTask(with: url)
-        
-        // Store completion handler
-        urlSessionDelegate.setCompletionHandler(
-            for: task.taskIdentifier,
-            handler: completion
-        )
-        
+
+        // Store completion handler on the actor before resuming the task.
+        downloadCompletionHandlers[task.taskIdentifier] = completion
+
         task.resume()
         logger.info("Started background download from: \(url.absoluteString)")
-        
+
         return task
+    }
+
+    /// Consume (and remove) a download completion handler. Called by the URLSession delegate
+    /// shim when a download finishes or errors.
+    func consumeDownloadCompletionHandler(
+        for taskIdentifier: Int
+    ) -> (@Sendable (Result<Data, any Error>) -> Void)? {
+        downloadCompletionHandlers.removeValue(forKey: taskIdentifier)
     }
     
     /// Handle app entering background
@@ -453,44 +459,28 @@ public actor BackgroundTaskManager {
 
 // MARK: - URLSession Delegate Handler
 
-/// Handles URLSession delegate callbacks for background downloads.
+/// Forwards URLSession delegate callbacks into the ``BackgroundTaskManager`` actor.
 ///
-/// ## Thread Safety Analysis
-/// This type is marked `@unchecked Sendable` because:
-/// - `backgroundTaskManager` is a weak reference to an actor (actor-isolated access)
-/// - `completionHandlers` dictionary is protected by `lock` (NSLock)
-/// - `logger` is thread-safe (OSLogLogger uses internal synchronization)
-/// - All URLSession delegate methods are called on URLSession's delegate queue
+/// All shared state (the completion-handler dictionary) lives on the actor; this shim only
+/// holds a weak reference to the manager. Delegate methods read the temporary download
+/// `location` synchronously (it is deleted by the system once the delegate returns) and then
+/// hop onto the actor to deliver the result.
 final class URLSessionDelegateHandler: NSObject, URLSessionDelegate, URLSessionDownloadDelegate, @unchecked Sendable {
-    
+
     weak var backgroundTaskManager: BackgroundTaskManager?
-    
-    private var completionHandlers: [Int: (Result<Data, any Error>) -> Void] = [:]
-    private let lock = NSLock()
+
     private let logger = OSLogLogger(category: "URLSessionDelegate", minimumLevel: .info)
-    
+
     init(backgroundTaskManager: BackgroundTaskManager?) {
         self.backgroundTaskManager = backgroundTaskManager
         super.init()
     }
-    
-    func setCompletionHandler(for taskIdentifier: Int, handler: @escaping (Result<Data, any Error>) -> Void) {
-        lock.lock()
-        defer { lock.unlock() }
-        completionHandlers[taskIdentifier] = handler
-    }
-    
-    private func removeCompletionHandler(for taskIdentifier: Int) -> ((Result<Data, any Error>) -> Void)? {
-        lock.lock()
-        defer { lock.unlock() }
-        return completionHandlers.removeValue(forKey: taskIdentifier)
-    }
-    
+
     // MARK: - URLSessionDelegate
-    
+
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         logger.info("URLSession finished events for background session")
-        
+
         // Call stored completion handler if app was relaunched
         Task { [weak self] in
             if let sessionIdentifier = session.configuration.identifier,
@@ -501,36 +491,40 @@ final class URLSessionDelegateHandler: NSObject, URLSessionDelegate, URLSessionD
             }
         }
     }
-    
+
     // MARK: - URLSessionDownloadDelegate
-    
+
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         logger.info("Download finished to: \(location.path)")
-        
+
+        // Read the file synchronously — the system deletes `location` once this delegate returns.
+        let result: Result<Data, any Error>
         do {
-            let data = try Data(contentsOf: location)
-            
-            if let handler = removeCompletionHandler(for: downloadTask.taskIdentifier) {
-                handler(.success(data))
-            }
-            
-            // Clean up temp file
+            result = .success(try Data(contentsOf: location))
             try? FileManager.default.removeItem(at: location)
-            
         } catch {
-            if let handler = removeCompletionHandler(for: downloadTask.taskIdentifier) {
-                handler(.failure(error))
-            }
+            result = .failure(error)
+        }
+
+        let taskIdentifier = downloadTask.taskIdentifier
+        Task { [weak backgroundTaskManager] in
+            guard let manager = backgroundTaskManager,
+                  let handler = await manager.consumeDownloadCompletionHandler(for: taskIdentifier)
+            else { return }
+            handler(result)
         }
     }
-    
+
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
-        if let error = error {
-            logger.error("Task completed with error: \(error.localizedDescription)")
-            
-            if let handler = removeCompletionHandler(for: task.taskIdentifier) {
-                handler(.failure(error))
-            }
+        guard let error else { return }
+        logger.error("Task completed with error: \(error.localizedDescription)")
+
+        let taskIdentifier = task.taskIdentifier
+        Task { [weak backgroundTaskManager] in
+            guard let manager = backgroundTaskManager,
+                  let handler = await manager.consumeDownloadCompletionHandler(for: taskIdentifier)
+            else { return }
+            handler(.failure(error))
         }
     }
 }

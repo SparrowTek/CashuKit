@@ -88,7 +88,7 @@ public actor KeychainSecureStore: SecureStore {
     // MARK: Mnemonic Operations
 
     public func saveMnemonic(_ mnemonic: SensitiveString) async throws {
-        let plaintext = mnemonic.withString { $0 }
+        let plaintext = await mnemonic.withString { $0 }
         try await saveItem(plaintext, account: KeychainConstants.mnemonicAccount)
     }
 
