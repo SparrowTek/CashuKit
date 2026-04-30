@@ -20,33 +20,32 @@ actor QueuedOperationsStorage {
         static let serviceName = "com.cashukit.network"
         static let accountName = "queued.operations"
     }
-    
-    private var configuration: KeychainConfiguration {
-        KeychainConfiguration(
-            serviceName: Constants.serviceName,
-            accessGroup: nil,
-            accountName: Constants.accountName
+
+    private let vault: Vault
+
+    init() {
+        self.vault = Vault(
+            configuration: KeychainConfiguration(
+                serviceName: Constants.serviceName,
+                accessGroup: nil,
+                accountName: Constants.accountName
+            )
         )
     }
-    
-    func save(_ operations: [NetworkMonitor.QueuedOperation]) {
+
+    func save(_ operations: [NetworkMonitor.QueuedOperation]) async {
         guard let data = try? JSONEncoder().encode(operations),
               let jsonString = String(data: data, encoding: .utf8) else {
             return
         }
-        
-        do {
-            // Try to delete existing item first to avoid duplicates
-            try? Vault.deletePrivateKey(keychainConfiguration: configuration)
-            try Vault.savePrivateKey(jsonString, keychainConfiguration: configuration)
-        } catch {
-            // Intentionally ignore persistence errors here; caller keeps the in-memory queue.
-        }
+
+        // save() upserts, so no need to pre-delete.
+        try? await vault.save(jsonString)
     }
-    
-    func load() -> [NetworkMonitor.QueuedOperation] {
+
+    func load() async -> [NetworkMonitor.QueuedOperation] {
         do {
-            let jsonString = try Vault.getPrivateKey(keychainConfiguration: configuration)
+            let jsonString = try await vault.read()
             guard let data = jsonString.data(using: .utf8) else {
                 return []
             }
@@ -55,9 +54,9 @@ actor QueuedOperationsStorage {
             return []
         }
     }
-    
-    func clear() {
-        try? Vault.deletePrivateKey(keychainConfiguration: configuration)
+
+    func clear() async {
+        try? await vault.delete()
     }
 }
 

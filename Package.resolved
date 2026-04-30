@@ -1,5 +1,5 @@
 {
-  "originHash" : "44c30c8b795826ac89dada004d281d640200bf0a138d384845df1c15b628e2cf",
+  "originHash" : "88ae07b9d68ae7bbfff17b73e05630418ffb52e9e33f80719186c90215ff4f86",
   "pins" : [
     {
       "identity" : "bdk-swift",
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/21-DOT-DEV/swift-secp256k1.git",
       "state" : {
-        "revision" : "21d46dd1d11737b77d15bd23468f989b24bc7f40",
-        "version" : "0.23.0"
+        "revision" : "cfab52e538683557259302c39ef25df60226eb30",
+        "version" : "0.23.1"
       }
     },
     {
@@ -69,8 +69,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/SparrowTek/Vault.git",
       "state" : {
-        "revision" : "25df48f62a5382c217cfe67f2a12e6efe8f60ec4",
-        "version" : "1.2.0"
+        "revision" : "983bbe509affe27bb02fe8709a238f53b3670e96",
+        "version" : "2.0.0"
       }
     }
   ],

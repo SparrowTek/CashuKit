@@ -49,43 +49,37 @@ public actor KeychainSecureStore: SecureStore {
         )
     }
     
-    private func saveItem(_ data: String, account: String) throws {
-        let config = createConfiguration(account: account)
-        
+    private func saveItem(_ data: String, account: String) async throws {
+        let vault = Vault(configuration: createConfiguration(account: account))
+
         do {
-            try Vault.savePrivateKey(data, keychainConfiguration: config)
+            try await vault.save(data)
         } catch {
             throw SecureStoreError.storeFailed(error.localizedDescription)
         }
     }
-    
-    private func loadItem(account: String) throws -> String? {
-        let config = createConfiguration(account: account)
-        
+
+    private func loadItem(account: String) async throws -> String? {
+        let vault = Vault(configuration: createConfiguration(account: account))
+
         do {
-            return try Vault.getPrivateKey(keychainConfiguration: config)
-        } catch {
-            // If item doesn't exist, return nil instead of throwing
-            if (error as NSError).code == -25300 { // errSecItemNotFound
-                return nil
-            }
-            // Vault might return nil for non-existent items
+            return try await vault.read()
+        } catch VaultError.itemNotFound {
             return nil
+        } catch {
+            throw SecureStoreError.storeFailed(error.localizedDescription)
         }
     }
-    
-    private func deleteItem(account: String) throws {
-        let config = createConfiguration(account: account)
-        
+
+    private func deleteItem(account: String) async throws {
+        let vault = Vault(configuration: createConfiguration(account: account))
+
         do {
-            try Vault.deletePrivateKey(keychainConfiguration: config)
-        } catch {
-            // Ignore if item doesn't exist
-            if (error as NSError).code == -25300 { // errSecItemNotFound
-                return
-            }
-            // Vault operations might fail silently for non-existent items
+            try await vault.delete()
+        } catch VaultError.itemNotFound {
             return
+        } catch {
+            throw SecureStoreError.storeFailed(error.localizedDescription)
         }
     }
     
@@ -94,84 +88,83 @@ public actor KeychainSecureStore: SecureStore {
     // MARK: Mnemonic Operations
 
     public func saveMnemonic(_ mnemonic: SensitiveString) async throws {
-        try mnemonic.withString { plaintext in
-            try saveItem(plaintext, account: KeychainConstants.mnemonicAccount)
-        }
+        let plaintext = mnemonic.withString { $0 }
+        try await saveItem(plaintext, account: KeychainConstants.mnemonicAccount)
     }
 
     public func loadMnemonic() async throws -> SensitiveString? {
-        guard let raw: String = try loadItem(account: KeychainConstants.mnemonicAccount) else {
+        guard let raw: String = try await loadItem(account: KeychainConstants.mnemonicAccount) else {
             return nil
         }
         return SensitiveString(raw)
     }
 
     public func deleteMnemonic() async throws {
-        try deleteItem(account: KeychainConstants.mnemonicAccount)
+        try await deleteItem(account: KeychainConstants.mnemonicAccount)
     }
-    
+
     // MARK: Seed Operations
-    
+
     public func saveSeed(_ seed: String) async throws {
-        try saveItem(seed, account: KeychainConstants.seedAccount)
+        try await saveItem(seed, account: KeychainConstants.seedAccount)
     }
-    
+
     public func loadSeed() async throws -> String? {
-        try loadItem(account: KeychainConstants.seedAccount)
+        try await loadItem(account: KeychainConstants.seedAccount)
     }
-    
+
     public func deleteSeed() async throws {
-        try deleteItem(account: KeychainConstants.seedAccount)
+        try await deleteItem(account: KeychainConstants.seedAccount)
     }
-    
+
     // MARK: Access Token Operations
-    
+
     public func saveAccessToken(_ token: String, mintURL: URL) async throws {
         let account = KeychainConstants.accessTokenPrefix + mintURL.absoluteString
-        try saveItem(token, account: account)
+        try await saveItem(token, account: account)
     }
-    
+
     public func loadAccessToken(mintURL: URL) async throws -> String? {
         let account = KeychainConstants.accessTokenPrefix + mintURL.absoluteString
-        return try loadItem(account: account)
+        return try await loadItem(account: account)
     }
-    
+
     public func deleteAccessToken(mintURL: URL) async throws {
         let account = KeychainConstants.accessTokenPrefix + mintURL.absoluteString
-        try deleteItem(account: account)
+        try await deleteItem(account: account)
     }
-    
+
     // MARK: Access Token List Operations
-    
+
     public func saveAccessTokenList(_ tokens: [String], mintURL: URL) async throws {
         let account = KeychainConstants.accessTokenListPrefix + mintURL.absoluteString
-        
+
         // Convert array to JSON string for storage
         let data = try JSONEncoder().encode(tokens)
         guard let jsonString = String(data: data, encoding: .utf8) else {
             throw SecureStoreError.invalidData
         }
-        
-        try saveItem(jsonString, account: account)
+
+        try await saveItem(jsonString, account: account)
     }
-    
+
     public func loadAccessTokenList(mintURL: URL) async throws -> [String]? {
         let account = KeychainConstants.accessTokenListPrefix + mintURL.absoluteString
-        
-        guard let jsonString = try loadItem(account: account) else {
+
+        guard let jsonString = try await loadItem(account: account) else {
             return nil
         }
-        
+
         guard let data = jsonString.data(using: .utf8) else {
             throw SecureStoreError.invalidData
         }
-        
+
         return try JSONDecoder().decode([String].self, from: data)
     }
-    
+
     public func deleteAccessTokenList(mintURL: URL) async throws {
         let account = KeychainConstants.accessTokenListPrefix + mintURL.absoluteString
-        try deleteItem(account: account)
+        try await deleteItem(account: account)
     }
     
     // MARK: Utility Operations
