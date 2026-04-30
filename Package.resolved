@@ -1,5 +1,5 @@
 {
-  "originHash" : "88ae07b9d68ae7bbfff17b73e05630418ffb52e9e33f80719186c90215ff4f86",
+  "originHash" : "a092a502a443a5c5b9aec9bf0c279dec60cb05ceb94aa29b2730da691b94429a",
   "pins" : [
     {
       "identity" : "bdk-swift",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "e07e00fa1fd435143a2dcf8b7eec9a7710b2fdfe",
         "version" : "5.7.0"
+      }
+    },
+    {
+      "identity" : "corecashu",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SparrowTek/CoreCashu.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "900a0744e692d95a718f4a60e8d66659e16b2f4f"
       }
     },
     {
