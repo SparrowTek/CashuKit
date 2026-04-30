@@ -72,29 +72,29 @@ struct BackgroundTaskManagerPhase812Tests {
         #expect(abs(decoded.createdAt.timeIntervalSince(original.createdAt)) < 1)
     }
 
-    @Test("addPendingOperation persists the operation through UserDefaults round-trip")
-    func addPendingOperationPersists() async {
-        // Clear any leftover state from previous runs. UserDefaults is shared across the
-        // process, so we have to scrub before constructing the manager.
-        UserDefaults.standard.removeObject(forKey: "PendingOperations")
+    @Test("addPendingOperation persists the operation through the pending-operations store")
+    func addPendingOperationPersists() async throws {
+        // Use an isolated UserDefaults suite per test invocation so other tests' managers
+        // (which default to .standard) cannot pollute our assertion. The suite is removed
+        // after the test completes.
+        let suiteName = "BackgroundTaskManagerTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let store = UserDefaultsPendingOperationsStore(userDefaults: userDefaults)
 
         let monitor = await NetworkMonitor()
-        let manager = BackgroundTaskManager(networkMonitor: monitor)
+        let manager = BackgroundTaskManager(networkMonitor: monitor, pendingOperationsStore: store)
         let payload = Data("test-data".utf8)
 
         await manager.addPendingOperation(type: "test-op", data: payload)
 
-        // Pull straight from UserDefaults — addPendingOperation persists on every call,
+        // Pull straight from the isolated store — addPendingOperation persists on every call,
         // bypassing the init-time load race that affects in-memory snapshots.
-        guard let raw = UserDefaults.standard.data(forKey: "PendingOperations"),
-              let decoded = try? JSONDecoder().decode([BackgroundTaskManager.PendingOperation].self, from: raw) else {
-            Issue.record("expected pending operations to persist to UserDefaults")
-            return
-        }
+        let raw = try #require(store.loadData())
+        let decoded = try JSONDecoder().decode([BackgroundTaskManager.PendingOperation].self, from: raw)
         let entry = decoded.first(where: { $0.type == "test-op" })
         #expect(entry != nil)
         #expect(entry?.data == payload)
-
-        UserDefaults.standard.removeObject(forKey: "PendingOperations")
     }
 }

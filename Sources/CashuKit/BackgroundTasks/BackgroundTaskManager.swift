@@ -10,6 +10,36 @@ import Foundation
 import CoreCashu
 import Combine
 
+/// Backing store for the ``BackgroundTaskManager`` pending-operations queue. The default
+/// implementation (``UserDefaultsPendingOperationsStore``) is backed by `UserDefaults.standard`;
+/// tests can inject an isolated implementation (e.g. one backed by a per-test
+/// `UserDefaults(suiteName:)`) so concurrent tests don't race on shared state.
+public protocol PendingOperationsStore: Sendable {
+    func loadData() -> Data?
+    func saveData(_ data: Data)
+}
+
+/// `UserDefaults`-backed ``PendingOperationsStore``. `UserDefaults` is documented thread-safe,
+/// so the `@unchecked Sendable` conformance is honest — we are not introducing new shared
+/// mutable state, just declaring what Apple already guarantees.
+public struct UserDefaultsPendingOperationsStore: PendingOperationsStore, @unchecked Sendable {
+    public let userDefaults: UserDefaults
+    public let key: String
+
+    public init(userDefaults: UserDefaults = .standard, key: String = "PendingOperations") {
+        self.userDefaults = userDefaults
+        self.key = key
+    }
+
+    public func loadData() -> Data? {
+        userDefaults.data(forKey: key)
+    }
+
+    public func saveData(_ data: Data) {
+        userDefaults.set(data, forKey: key)
+    }
+}
+
 /// Manages background tasks and operations that continue when app is suspended
 public actor BackgroundTaskManager {
 
@@ -86,6 +116,7 @@ public actor BackgroundTaskManager {
     private let logger: OSLogLogger
     private let urlSessionDelegate: URLSessionDelegateHandler
     private let networkMonitor: NetworkMonitor
+    private let pendingOperationsStore: any PendingOperationsStore
     var backgroundCompletionHandlers: [String: @Sendable () -> Void] = [:]
     private var downloadCompletionHandlers: [Int: @Sendable (Result<Data, any Error>) -> Void] = [:]
     
@@ -102,9 +133,19 @@ public actor BackgroundTaskManager {
     
     // MARK: - Initialization
     
-    public init(networkMonitor: NetworkMonitor) {
+    /// - Parameters:
+    ///   - networkMonitor: Network connectivity source used to gate operation execution.
+    ///   - pendingOperationsStore: Persistence backing for the pending-operations queue.
+    ///     Defaults to a `UserDefaults.standard`-backed store. Tests should pass an isolated
+    ///     instance — e.g. `UserDefaultsPendingOperationsStore(userDefaults: UserDefaults(suiteName: ...)!)`
+    ///     — to avoid cross-test races on the shared standard domain.
+    public init(
+        networkMonitor: NetworkMonitor,
+        pendingOperationsStore: any PendingOperationsStore = UserDefaultsPendingOperationsStore()
+    ) {
         self.logger = OSLogLogger(category: "BackgroundTasks", minimumLevel: .info)
         self.networkMonitor = networkMonitor
+        self.pendingOperationsStore = pendingOperationsStore
         self.urlSessionDelegate = URLSessionDelegateHandler(backgroundTaskManager: nil)
         self.urlSessionDelegate.backgroundTaskManager = self
         Task {
@@ -440,18 +481,18 @@ public actor BackgroundTaskManager {
     }
     
     // MARK: - Persistence
-    
+
     private func savePendingOperations() {
         guard let data = try? JSONEncoder().encode(pendingOperations) else { return }
-        UserDefaults.standard.set(data, forKey: "PendingOperations")
+        pendingOperationsStore.saveData(data)
     }
-    
+
     private func loadPendingOperations() {
-        guard let data = UserDefaults.standard.data(forKey: "PendingOperations"),
+        guard let data = pendingOperationsStore.loadData(),
               let operations = try? JSONDecoder().decode([PendingOperation].self, from: data) else {
             return
         }
-        
+
         pendingOperations = operations
         logger.info("Loaded \(operations.count) pending operations")
     }
