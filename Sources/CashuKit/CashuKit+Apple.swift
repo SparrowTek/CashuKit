@@ -30,13 +30,24 @@ public class AppleCashuWallet: ObservableObject {
     private let logger: OSLogLogger
     private var cancellables = Set<AnyCancellable>()
 
+    /// NUT-13 keyset counters persist across launches. Without persistence a relaunched
+    /// wallet re-derives already-used deterministic secrets, which compliant mints reject
+    /// ("outputs already signed") and lenient mints double-issue.
+    private let counterStorage: UserDefaultsKeysetCounterStorage?
+
     // MARK: - Configuration
 
     public struct Configuration: Sendable {
         public let keychainAccessGroup: String?
         public let logSubsystem: String
         public let logLevel: LogLevel
+        /// INERT — not wired to anything. Gate sensitive UI flows with
+        /// ``BiometricAuthManager`` (or a Keychain access-control policy on
+        /// ``KeychainSecureStore``) explicitly.
         public let enableBiometrics: Bool
+        /// INERT — intentionally ignored. Wallet key material is ThisDeviceOnly by
+        /// design: a seed synced via iCloud Keychain lets two devices double-spend
+        /// against each other.
         public let enableiCloudSync: Bool
         public let httpTimeoutInterval: TimeInterval
         public let retryAttempts: Int
@@ -72,14 +83,14 @@ public class AppleCashuWallet: ObservableObject {
 
         // Set up Apple-specific implementations
         self.secureStore = KeychainSecureStore(
-            accessGroup: configuration.keychainAccessGroup,
-            synchronizable: configuration.enableiCloudSync
+            accessGroup: configuration.keychainAccessGroup
         )
         self.logger = OSLogLogger(
             subsystem: configuration.logSubsystem,
             category: "Wallet",
             minimumLevel: configuration.logLevel
         )
+        self.counterStorage = try? UserDefaultsKeysetCounterStorage()
     }
 
     /// Convenience initializer for a specific mint
@@ -112,12 +123,26 @@ public class AppleCashuWallet: ObservableObject {
                 operationTimeout: configuration.httpTimeoutInterval
             )
 
-            // Create the wallet with CoreCashu
-            let newWallet = await CashuWallet(
-                configuration: walletConfig,
-                secureStore: secureStore,
-                logger: logger
-            )
+            // Reuse the stored mnemonic when one exists so the wallet keeps its NUT-13
+            // deterministic derivation (and restorability) across launches — a plain
+            // wallet would silently fall back to random, unrecoverable secrets.
+            let newWallet: CashuWallet
+            if let storedMnemonic = try await secureStore.loadMnemonic() {
+                newWallet = try await CashuWallet(
+                    configuration: walletConfig,
+                    mnemonic: storedMnemonic,
+                    counterStorage: counterStorage,
+                    secureStore: secureStore,
+                    logger: logger
+                )
+            } else {
+                newWallet = await CashuWallet(
+                    configuration: walletConfig,
+                    counterStorage: counterStorage,
+                    secureStore: secureStore,
+                    logger: logger
+                )
+            }
 
             // Initialize the wallet (fetches mint info and keysets)
             try await newWallet.initialize()
@@ -334,33 +359,44 @@ public class AppleCashuWallet: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
+        // Create wallet configuration
+        let walletConfig = try WalletConfiguration(
+            mintURL: url.absoluteString,
+            unit: "sat",
+            retryAttempts: configuration.retryAttempts,
+            retryDelay: 1.0,
+            operationTimeout: configuration.httpTimeoutInterval
+        )
+
+        // Construct the wallet FIRST (offline: validation + key derivation). The wallet's
+        // initializer persists the mnemonic itself only after validation succeeds — so
+        // the previously stored mnemonic is never overwritten by one that can't build a
+        // wallet. Only after this point does any network work happen.
+        let newWallet: CashuWallet
         do {
-            // Save mnemonic securely (validation passed)
-            try await secureStore.saveMnemonic(mnemonic)
-
-            // Create wallet configuration
-            let walletConfig = try WalletConfiguration(
-                mintURL: url.absoluteString,
-                unit: "sat",
-                retryAttempts: configuration.retryAttempts,
-                retryDelay: 1.0,
-                operationTimeout: configuration.httpTimeoutInterval
-            )
-
-            // Create new wallet with mnemonic
-            let newWallet = try await CashuWallet(
+            newWallet = try await CashuWallet(
                 configuration: walletConfig,
                 mnemonic: mnemonic,
+                counterStorage: counterStorage,
                 secureStore: secureStore,
                 logger: logger
             )
+        } catch {
+            lastError = error
+            logger.error("Failed to restore wallet: \(error.localizedDescription)")
+            throw error
+        }
 
+        // The new wallet is valid and its mnemonic is persisted: adopt it before the
+        // network phase, so memory and keychain can never disagree afterwards.
+        self.wallet = newWallet
+
+        do {
             try await newWallet.initialize()
 
             // Restore proofs from seed - returns the count of restored proofs
             let restoredCount = try await newWallet.restoreFromSeed()
 
-            self.wallet = newWallet
             // Fetch the proofs from the wallet
             let walletProofs = try await newWallet.proofs
             proofs = walletProofs
@@ -368,15 +404,24 @@ public class AppleCashuWallet: ObservableObject {
 
             logger.info("Restored wallet with \(restoredCount) proofs")
         } catch {
+            // The wallet itself is consistent; only the network restore failed. Callers
+            // can retry initialize()/restoreFromSeed via connect(to:) when back online.
             lastError = error
             logger.error("Failed to restore wallet: \(error.localizedDescription)")
             throw error
         }
     }
 
-    /// Generate new mnemonic
+    /// Generate a new mnemonic and store it.
+    ///
+    /// Refuses to run while a mnemonic is already stored — overwriting it would orphan
+    /// every proof derived from the old seed. Call ``clearAllData()`` first to start over
+    /// deliberately.
     public func generateMnemonic() async throws -> String {
         do {
+            guard try await secureStore.loadMnemonic() == nil else {
+                throw CashuError.invalidState("A mnemonic is already stored; call clearAllData() first to replace it")
+            }
             let mnemonic = try BIP39.generateMnemonic()
             try await secureStore.saveMnemonic(mnemonic)
             logger.info("Generated new mnemonic")

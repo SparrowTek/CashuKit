@@ -35,8 +35,8 @@ struct CashuKitTests {
         let store2 = KeychainSecureStore(accessGroup: "com.test.group")
         #expect(type(of: store2) == KeychainSecureStore.self)
         
-        // Test with synchronizable
-        let store3 = KeychainSecureStore(synchronizable: true)
+        // Test with access control
+        let store3 = KeychainSecureStore(accessControl: .devicePasscode)
         #expect(type(of: store3) == KeychainSecureStore.self)
     }
     

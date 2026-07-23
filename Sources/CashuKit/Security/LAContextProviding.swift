@@ -6,6 +6,7 @@
 //  ``BiometricAuthManager`` can be exercised with a fake biometric subsystem in unit tests.
 //
 
+#if canImport(LocalAuthentication)
 import Foundation
 import LocalAuthentication
 
@@ -31,3 +32,5 @@ public struct DefaultLAContextProvider: LAContextProviding {
     public init() {}
     public func makeContext() -> any LAContextLike { LAContext() }
 }
+
+#endif // canImport(LocalAuthentication)

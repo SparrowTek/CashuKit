@@ -138,12 +138,16 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
         guard _isConnected, let task = webSocketTask else {
             throw WebSocketError.notConnected
         }
-        
+
         do {
-            let message = try await withTimeout(seconds: configuration.connectionTimeout) {
-                try await task.receive()
-            }
-            
+            // Deliberately NO artificial timeout here: receive() blocks until a message
+            // arrives, per the protocol contract. NUT-17 subscriptions legitimately sit
+            // idle for minutes — a timeout here made every healthy idle connection
+            // "fail" and churn through reconnects (and a message racing the timeout
+            // could be consumed by the losing child and dropped). Liveness detection
+            // belongs to the ping keepalive.
+            let message = try await task.receive()
+
             switch message {
             case .string(let text):
                 return .text(text)
@@ -155,11 +159,10 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
         } catch let webSocketError as WebSocketError {
             throw webSocketError
         } catch {
-            // Check if connection was closed
-            if !_isConnected {
-                throw WebSocketError.connectionClosed
-            }
-            throw WebSocketError.receiveFailed(error.localizedDescription)
+            // A failed receive means the transport is gone — reflect that in our state
+            // instead of letting isConnected report a zombie connection.
+            _isConnected = false
+            throw WebSocketError.connectionClosed
         }
     }
     
@@ -201,10 +204,23 @@ public actor AppleWebSocketClient: WebSocketClientProtocol {
         
         // Create a task that sends pings
         pingTask = Task {
+            var consecutiveFailures = 0
             while _isConnected && !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                if _isConnected && !Task.isCancelled {
-                    try? await ping()
+                guard _isConnected, !Task.isCancelled else { break }
+
+                do {
+                    try await ping()
+                    consecutiveFailures = 0
+                } catch {
+                    // A dead TCP path must eventually flip isConnected — otherwise the
+                    // client reports a zombie connection forever and nothing upstream
+                    // (RobustWebSocketClient's reconnect logic) ever kicks in.
+                    consecutiveFailures += 1
+                    if consecutiveFailures >= 3 {
+                        _isConnected = false
+                        break
+                    }
                 }
             }
         }

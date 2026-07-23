@@ -5,6 +5,7 @@
 //  Biometric authentication support for secure wallet access
 //
 
+#if canImport(LocalAuthentication)
 import Foundation
 import LocalAuthentication
 import CoreCashu
@@ -183,39 +184,46 @@ public actor BiometricAuthManager {
         reason: String,
         fallbackTitle: String? = nil
     ) async throws {
-        // Check availability first
-        guard isAvailable else {
+        // The evaluation policy the user will actually face. With passcode fallback
+        // enabled (the default), a device without biometrics can still authenticate.
+        let evaluationPolicy: LAPolicy = policy.contains(.biometryOnly)
+            ? .deviceOwnerAuthenticationWithBiometrics
+            : .deviceOwnerAuthentication
+
+        // Probe availability at call time against the SAME policy that will be
+        // evaluated. The old code gated on cached biometrics-only availability, which
+        // (a) permanently rejected passcode-only devices even though the fallback policy
+        // would succeed, and (b) raced against the async init-time availability check.
+        let probe = contextProvider.makeContext()
+        var probeError: NSError?
+        guard probe.canEvaluatePolicy(evaluationPolicy, error: &probeError) else {
+            if let probeError, probeError.code == LAError.biometryNotEnrolled.rawValue {
+                throw AuthenticationError.biometryNotEnrolled
+            }
             throw AuthenticationError.biometryNotAvailable
         }
-        
-        guard isEnrolled else {
-            throw AuthenticationError.biometryNotEnrolled
+
+        // Create new context for each authentication (through the injectable provider so
+        // the whole path is testable with a fake).
+        let authContext = contextProvider.makeContext()
+
+        // Cosmetic configuration only exists on the concrete LAContext. Note: no
+        // touchIDAuthenticationAllowableReuseDuration — a wallet wants a fresh
+        // authentication per sensitive operation, not a grace window.
+        if let concreteContext = authContext as? LAContext {
+            concreteContext.localizedCancelTitle = "Cancel"
+            if let fallbackTitle = fallbackTitle {
+                concreteContext.localizedFallbackTitle = fallbackTitle
+            }
         }
-        
-        // Create new context for each authentication
-        let authContext = LAContext()
-        
-        // Configure context
-        authContext.localizedCancelTitle = "Cancel"
-        if let fallbackTitle = fallbackTitle {
-            authContext.localizedFallbackTitle = fallbackTitle
-        }
-        
-        // Set timeout (default is 30 seconds)
-        authContext.touchIDAuthenticationAllowableReuseDuration = 10
-        
-        // Determine policy based on configuration
-        let evaluationPolicy: LAPolicy = policy.contains(.biometryOnly) 
-            ? .deviceOwnerAuthenticationWithBiometrics 
-            : .deviceOwnerAuthentication
-        
+
         do {
             // Perform authentication
             let success = try await authContext.evaluatePolicy(
                 evaluationPolicy,
                 localizedReason: reason
             )
-            
+
             if success {
                 logger.info("Biometric authentication successful")
             } else {
@@ -225,28 +233,21 @@ public actor BiometricAuthManager {
         } catch let error as LAError {
             logger.error("LAError during authentication: \(error.localizedDescription)")
             throw mapLAError(error)
+        } catch let error as AuthenticationError {
+            throw error
         } catch {
             logger.error("Unknown error during authentication: \(error.localizedDescription)")
             throw AuthenticationError.failed(error.localizedDescription)
         }
     }
-    
-    /// Authenticate for sensitive operation
-    /// - Parameter operation: Description of the operation
+
+    /// Authenticate for a sensitive operation. Always authenticates: whether an
+    /// operation is sensitive is the caller's decision to make when it chooses to call
+    /// this — the previous keyword matching on the reason string silently skipped
+    /// authentication for any wording (or language) not on a hardcoded English list.
+    /// - Parameter operation: Description of the operation, shown to the user
     public func authenticateForSensitiveOperation(_ operation: String) async throws {
-        guard policy.contains(.sensitiveOperationsOnly) else {
-            // If not configured for sensitive ops only, always authenticate
-            try await authenticate(reason: operation)
-            return
-        }
-        
-        // Define which operations are considered sensitive
-        let sensitiveKeywords = ["send", "export", "delete", "restore", "mnemonic", "seed", "private"]
-        let isSensitive = sensitiveKeywords.contains { operation.lowercased().contains($0) }
-        
-        if isSensitive {
-            try await authenticate(reason: operation)
-        }
+        try await authenticate(reason: operation)
     }
     
     /// Create a secured LAContext for Keychain operations
@@ -515,3 +516,4 @@ public extension View {
     }
 }
 #endif
+#endif // canImport(LocalAuthentication)

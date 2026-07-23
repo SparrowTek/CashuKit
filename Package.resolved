@@ -1,15 +1,6 @@
 {
-  "originHash" : "a092a502a443a5c5b9aec9bf0c279dec60cb05ceb94aa29b2730da691b94429a",
+  "originHash" : "5e91dcd34e476f772427ee17dcf2f2d00c0d81cfb47819ec0b126d908ed76aa1",
   "pins" : [
-    {
-      "identity" : "bdk-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/bitcoindevkit/bdk-swift",
-      "state" : {
-        "revision" : "370f3947d4fd87377f645927d4a86597f1591cc0",
-        "version" : "2.0.0"
-      }
-    },
     {
       "identity" : "bigint",
       "kind" : "remoteSourceControl",
@@ -17,15 +8,6 @@
       "state" : {
         "revision" : "e07e00fa1fd435143a2dcf8b7eec9a7710b2fdfe",
         "version" : "5.7.0"
-      }
-    },
-    {
-      "identity" : "corecashu",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/SparrowTek/CoreCashu.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "900a0744e692d95a718f4a60e8d66659e16b2f4f"
       }
     },
     {
@@ -42,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-asn1.git",
       "state" : {
-        "revision" : "eb50cbd14606a9161cbc5d452f18797c90ef0bab",
-        "version" : "1.7.0"
+        "revision" : "a9a5efd40eaf558a2bcd48d64b1d1646be686008",
+        "version" : "1.7.1"
       }
     },
     {
@@ -60,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/21-DOT-DEV/swift-secp256k1.git",
       "state" : {
-        "revision" : "cfab52e538683557259302c39ef25df60226eb30",
-        "version" : "0.23.1"
+        "revision" : "e70a10e036a55fffea31568f0af92d69b6d449cd",
+        "version" : "0.23.2"
       }
     },
     {
@@ -71,15 +53,6 @@
       "state" : {
         "revision" : "fd929a6d8f7651ce0f63fc99397fd5762358cc29",
         "version" : "0.6.0"
-      }
-    },
-    {
-      "identity" : "vault",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/SparrowTek/Vault.git",
-      "state" : {
-        "revision" : "983bbe509affe27bb02fe8709a238f53b3670e96",
-        "version" : "2.0.0"
       }
     }
   ],

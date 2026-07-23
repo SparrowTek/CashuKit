@@ -6,10 +6,11 @@ import Foundation
 @Suite("Keychain Secure Store")
 struct KeychainSecureStoreTests {
     
-    // Create a test-specific keychain store to avoid conflicts
+    // Isolated per-suite-instance service prefix: these tests hit the REAL keychain, so
+    // a fixed service name would collide with production data and leak state between
+    // (or from aborted) runs.
     private let testStore = KeychainSecureStore(
-        accessGroup: nil,
-        synchronizable: false
+        servicePrefix: "com.cashukit.tests.\(UUID().uuidString)"
     )
     
     // Helper to handle keychain errors in test environment

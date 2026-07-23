@@ -31,6 +31,10 @@ public final class OSLogLogger: LoggerProtocol, @unchecked Sendable {
     private let subsystem: String
     private let category: String
     private let logger: Logger
+    /// When true, redacted log lines are marked `privacy: .public` in the unified log.
+    /// Defaults to false: even redacted wallet logs stay private so a regex gap can
+    /// never leak funds-bearing material through a sysdiagnose.
+    private let logPublicly: Bool
     
     // Serial queue for thread-safe operations (concurrent reads, barrier writes)
     private let queue = DispatchQueue(label: "com.cashukit.oslogger", attributes: .concurrent)
@@ -42,15 +46,19 @@ public final class OSLogLogger: LoggerProtocol, @unchecked Sendable {
     ///   - subsystem: The subsystem for logging (defaults to bundle identifier)
     ///   - category: The category for logging
     ///   - minimumLevel: The minimum log level to record
+    /// - Parameter logPublicly: Marks log lines `privacy: .public`. Leave false in
+    ///   production — redaction is regex-based defense-in-depth, not a guarantee.
     public init(
         subsystem: String? = nil,
         category: String = "CashuKit",
-        minimumLevel: LogLevel = .info
+        minimumLevel: LogLevel = .info,
+        logPublicly: Bool = false
     ) {
         self.subsystem = subsystem ?? Bundle.main.bundleIdentifier ?? "com.cashukit"
         self.category = category
         self._minimumLevel = minimumLevel
         self.logger = Logger(subsystem: self.subsystem, category: self.category)
+        self.logPublicly = logPublicly
     }
     
     // MARK: - LoggerProtocol Implementation
@@ -133,19 +141,20 @@ public final class OSLogLogger: LoggerProtocol, @unchecked Sendable {
         // Capture local copies for the queue
         let loggerCopy = self.logger
 
+        let publicly = self.logPublicly
         queue.async {
             // Log with appropriate os.log level
             switch level {
             case .debug:
-                loggerCopy.debug("\(fullMessage, privacy: .public)")
+                if publicly { loggerCopy.debug("\(fullMessage, privacy: .public)") } else { loggerCopy.debug("\(fullMessage, privacy: .private)") }
             case .info:
-                loggerCopy.info("\(fullMessage, privacy: .public)")
+                if publicly { loggerCopy.info("\(fullMessage, privacy: .public)") } else { loggerCopy.info("\(fullMessage, privacy: .private)") }
             case .warning:
-                loggerCopy.warning("\(fullMessage, privacy: .public)")
+                if publicly { loggerCopy.warning("\(fullMessage, privacy: .public)") } else { loggerCopy.warning("\(fullMessage, privacy: .private)") }
             case .error:
-                loggerCopy.error("\(fullMessage, privacy: .public)")
+                if publicly { loggerCopy.error("\(fullMessage, privacy: .public)") } else { loggerCopy.error("\(fullMessage, privacy: .private)") }
             case .critical:
-                loggerCopy.critical("\(fullMessage, privacy: .public)")
+                if publicly { loggerCopy.critical("\(fullMessage, privacy: .public)") } else { loggerCopy.critical("\(fullMessage, privacy: .private)") }
             }
         }
     }
@@ -158,7 +167,9 @@ public final class OSLogLogger: LoggerProtocol, @unchecked Sendable {
             if isSensitiveKey(key) {
                 return "\(key)=[REDACTED]"
             }
-            return "\(key)=\(value)"
+            // Values run through the same redaction as messages: a token passed under a
+            // harmless key ("payload") must not bypass the filters.
+            return "\(key)=\(redactSensitiveData(in: String(describing: value)))"
         }.joined(separator: ", ")
         
         return " [\(formattedPairs)]"
@@ -189,8 +200,10 @@ public final class OSLogLogger: LoggerProtocol, @unchecked Sendable {
         let sensitivePatterns = [
             #"(?i)private[_\s]?key[:\s]*[^\s]+"#,
             #"(?i)secret[:\s]*[^\s]+"#,
-            #"(?i)seed[:\s]*[^\s]+"#,
-            #"(?i)mnemonic[:\s]*[^\s]+"#,
+            // Seed/mnemonic values are SPACE-SEPARATED word lists — consuming a single
+            // token would redact only the first of 12–24 words.
+            #"(?i)seed[:\s]*(?:[a-z]+\s+){0,23}[a-z0-9]+"#,
+            #"(?i)mnemonic[:\s]*(?:[a-z]+\s+){0,23}[a-z]+"#,
             #"(?i)password[:\s]*[^\s]+"#
         ]
         
@@ -203,7 +216,9 @@ public final class OSLogLogger: LoggerProtocol, @unchecked Sendable {
         }
         
         // Redact Cashu tokens (start with "cashu" followed by base64-like characters)
-        let cashuTokenPattern = #"cashu[A-Za-z0-9+/=]{20,}"#
+        // Both base64 (+, /) and base64url (-, _) alphabets: V4 cashuB tokens are
+        // base64url, and stopping at the first '-'/'_' leaks the token's tail.
+        let cashuTokenPattern = #"cashu[A-Za-z0-9+/\-_=]{20,}"#
         redacted = redacted.replacingOccurrences(
             of: cashuTokenPattern,
             with: "[REDACTED_CASHU_TOKEN]",

@@ -72,16 +72,32 @@ public actor BackgroundTaskManager {
     }
     
     public struct PendingOperation: Codable, Identifiable, Sendable {
-        public let id = UUID()
+        // The id is persisted: regenerating it on every decode (the previous behavior)
+        // breaks any cross-launch dedup or removal keyed on identity.
+        public let id: UUID
         public let type: String
         public let data: Data
         public let createdAt: Date
         public var isExecuting: Bool = false
         public var completedAt: Date?
         public var error: String?
-        
-        public enum CodingKeys: String, CodingKey {
-            case type, data, createdAt, isExecuting, completedAt, error
+
+        public init(
+            id: UUID = UUID(),
+            type: String,
+            data: Data,
+            createdAt: Date,
+            isExecuting: Bool = false,
+            completedAt: Date? = nil,
+            error: String? = nil
+        ) {
+            self.id = id
+            self.type = type
+            self.data = data
+            self.createdAt = createdAt
+            self.isExecuting = isExecuting
+            self.completedAt = completedAt
+            self.error = error
         }
     }
     
@@ -112,6 +128,8 @@ public actor BackgroundTaskManager {
     
     private var registeredTasks: Set<TaskType> = []
     private var pendingOperations: [PendingOperation] = []
+    /// Tokens for block-based NotificationCenter observers, retained so they can be removed.
+    private var lifecycleObserverTokens: [any NSObjectProtocol] = []
     private var activeURLSession: URLSession?
     private let logger: OSLogLogger
     private let urlSessionDelegate: URLSessionDelegateHandler
@@ -160,11 +178,40 @@ public actor BackgroundTaskManager {
         backgroundCompletionHandlers[identifier] = nil
     }
     
-    /// Register background tasks with the system
+    #if os(iOS) || os(tvOS)
+    /// BGTaskScheduler raises an uncatchable NSException when the same identifier is
+    /// registered twice in one process — a second manager instance (or a second call)
+    /// must therefore be a no-op, tracked process-wide, not per-instance.
+    private static let processRegisteredIdentifiers = ProcessRegistrationState()
+
+    private final class ProcessRegistrationState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var identifiers: Set<String> = []
+
+        /// Returns true when the identifier was newly claimed by this call.
+        func claim(_ identifier: String) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return identifiers.insert(identifier).inserted
+        }
+    }
+    #endif
+
+    /// Register background tasks with the system.
+    ///
+    /// The registration result is honored: when the system rejects an identifier (e.g.
+    /// missing from `BGTaskSchedulerPermittedIdentifiers` in the host app's Info.plist),
+    /// the task is NOT recorded as registered, so `scheduleBackgroundTask` fails loudly
+    /// instead of submitting requests the system will silently drop.
     public func registerBackgroundTasks() {
         #if os(iOS) || os(tvOS)
         for taskType in TaskType.allCases {
-            BGTaskScheduler.shared.register(
+            guard Self.processRegisteredIdentifiers.claim(taskType.identifier) else {
+                registeredTasks.insert(taskType)
+                continue
+            }
+
+            let registered = BGTaskScheduler.shared.register(
                 forTaskWithIdentifier: taskType.identifier,
                 using: nil
             ) { task in
@@ -174,8 +221,13 @@ public actor BackgroundTaskManager {
                     await self?.handleBackgroundTask(wrappedTask.task, type: type)
                 }
             }
-            registeredTasks.insert(taskType)
-            logger.info("Registered background task: \(taskType.identifier)")
+
+            if registered {
+                registeredTasks.insert(taskType)
+                logger.info("Registered background task: \(taskType.identifier)")
+            } else {
+                logger.error("System refused background task registration for \(taskType.identifier) — check BGTaskSchedulerPermittedIdentifiers in Info.plist")
+            }
         }
         #endif
     }
@@ -359,33 +411,43 @@ public actor BackgroundTaskManager {
     #if os(iOS) || os(tvOS)
     private func handleBackgroundTask(_ task: BGTask, type: TaskType) async {
         logger.info("Handling background task: \(type.identifier)")
-        
-        // Set up expiration handler
-        task.expirationHandler = { [weak self] in
-            self?.logger.warning("Background task expired: \(type.identifier)")
-            task.setTaskCompleted(success: false)
-        }
-        
-        do {
+
+        // The work runs in a cancellable child so expiration actually STOPS it — and
+        // `setTaskCompleted` is called from exactly one place. The old handler called
+        // setTaskCompleted itself while the work kept running and completed a second
+        // time (API misuse), with the handler retaining the task in a cycle.
+        let work = Task { [weak self] in
             switch type {
             case .balanceRefresh:
-                try await performBalanceRefresh()
+                try await self?.performBalanceRefresh()
             case .proofValidation:
-                try await performProofValidation()
+                try await self?.performProofValidation()
             case .tokenSync:
-                try await performTokenSync()
+                try await self?.performTokenSync()
             case .mintHealthCheck:
-                try await performMintHealthCheck()
+                try await self?.performMintHealthCheck()
             }
-            
-            task.setTaskCompleted(success: true)
-            
-            // Schedule next execution
-            try? scheduleBackgroundTask(type)
-            
+        }
+
+        task.expirationHandler = {
+            work.cancel()
+        }
+
+        let success: Bool
+        do {
+            try await work.value
+            success = true
         } catch {
             logger.error("Background task failed: \(error.localizedDescription)")
-            task.setTaskCompleted(success: false)
+            success = false
+        }
+
+        task.expirationHandler = nil
+        task.setTaskCompleted(success: success)
+
+        if success {
+            // Schedule next execution
+            try? scheduleBackgroundTask(type)
         }
     }
     #endif
@@ -489,11 +551,22 @@ public actor BackgroundTaskManager {
 
     private func loadPendingOperations() {
         guard let data = pendingOperationsStore.loadData(),
-              let operations = try? JSONDecoder().decode([PendingOperation].self, from: data) else {
+              var operations = try? JSONDecoder().decode([PendingOperation].self, from: data) else {
             return
         }
 
-        pendingOperations = operations
+        // A fresh process has nothing executing: reset any `isExecuting` flag persisted
+        // mid-flight, or those operations become permanent zombies the execution filter
+        // skips forever.
+        for index in operations.indices {
+            operations[index].isExecuting = false
+        }
+
+        // MERGE with operations queued before this async load landed — replacing the
+        // array wholesale would drop them, and the next save would erase them from
+        // the store as well.
+        let loadedIDs = Set(operations.map(\.id))
+        pendingOperations = operations + pendingOperations.filter { !loadedIDs.contains($0.id) }
         logger.info("Loaded \(operations.count) pending operations")
     }
 }
@@ -522,12 +595,16 @@ final class URLSessionDelegateHandler: NSObject, URLSessionDelegate, URLSessionD
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         logger.info("URLSession finished events for background session")
 
-        // Call stored completion handler if app was relaunched
+        // Call stored completion handler if app was relaunched. UIKit requires the
+        // handleEventsForBackgroundURLSession completion handler to run on the main
+        // thread.
         Task { [weak self] in
             if let sessionIdentifier = session.configuration.identifier,
                let manager = self?.backgroundTaskManager,
                let completionHandler = await manager.backgroundCompletionHandlers[sessionIdentifier] {
-                completionHandler()
+                await MainActor.run {
+                    completionHandler()
+                }
                 await manager.clearCompletionHandler(for: sessionIdentifier)
             }
         }
@@ -577,39 +654,54 @@ import UIKit
 
 public extension BackgroundTaskManager {
     
-    /// Set up app lifecycle observers
+    /// Set up app lifecycle observers.
+    ///
+    /// Observers capture the manager weakly and their tokens are retained for removal —
+    /// the previous strong captures kept the manager (and its background URLSession)
+    /// alive forever.
     func setupLifecycleObservers() {
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.didEnterBackgroundNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task {
-                await self.handleEnterBackground()
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.willEnterForegroundNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task {
-                await self.handleEnterForeground()
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.willTerminateNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task {
-                await self.handleTermination()
-            }
-        }
-        
+        removeLifecycleObservers()
+
+        let tokens = [
+            NotificationCenter.default.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { [weak self] in
+                    await self?.handleEnterBackground()
+                }
+            },
+            NotificationCenter.default.addObserver(
+                forName: UIApplication.willEnterForegroundNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { [weak self] in
+                    await self?.handleEnterForeground()
+                }
+            },
+            NotificationCenter.default.addObserver(
+                forName: UIApplication.willTerminateNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { [weak self] in
+                    await self?.handleTermination()
+                }
+            },
+        ]
+
+        lifecycleObserverTokens = tokens
         logger.info("Set up lifecycle observers")
+    }
+
+    /// Remove previously installed lifecycle observers.
+    func removeLifecycleObservers() {
+        for token in lifecycleObserverTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        lifecycleObserverTokens = []
     }
     
     /// Store completion handler for background URL session

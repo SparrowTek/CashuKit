@@ -9,54 +9,60 @@ import Foundation
 import Network
 import CoreCashu
 import Combine
-import Vault
+import Security
 
 // MARK: - Secure Storage for Queued Operations
 
-/// Securely stores queued operations using the Keychain instead of UserDefaults
-/// This is important because queued operations may contain sensitive token data
+/// Securely stores queued operations using the Keychain instead of UserDefaults.
+/// This is important because queued operations may contain sensitive token data —
+/// so items are stored `AfterFirstUnlockThisDeviceOnly` in the data-protection
+/// keychain (never restorable onto another device from a backup).
 actor QueuedOperationsStorage {
     private enum Constants {
         static let serviceName = "com.cashukit.network"
         static let accountName = "queued.operations"
     }
 
-    private let vault: Vault
-
-    init() {
-        self.vault = Vault(
-            configuration: KeychainConfiguration(
-                serviceName: Constants.serviceName,
-                accessGroup: nil,
-                accountName: Constants.accountName
-            )
-        )
+    private var baseQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Constants.serviceName,
+            kSecAttrAccount as String: Constants.accountName,
+            kSecUseDataProtectionKeychain as String: true,
+        ]
     }
 
     func save(_ operations: [NetworkMonitor.QueuedOperation]) async {
-        guard let data = try? JSONEncoder().encode(operations),
-              let jsonString = String(data: data, encoding: .utf8) else {
+        guard let data = try? JSONEncoder().encode(operations) else {
             return
         }
 
-        // save() upserts, so no need to pre-delete.
-        try? await vault.save(jsonString)
-    }
+        var addQuery = baseQuery
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
-    func load() async -> [NetworkMonitor.QueuedOperation] {
-        do {
-            let jsonString = try await vault.read()
-            guard let data = jsonString.data(using: .utf8) else {
-                return []
-            }
-            return try JSONDecoder().decode([NetworkMonitor.QueuedOperation].self, from: data)
-        } catch {
-            return []
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let update: [String: Any] = [kSecValueData as String: data]
+            SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
         }
     }
 
+    func load() async -> [NetworkMonitor.QueuedOperation] {
+        var query = baseQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else {
+            return []
+        }
+        return (try? JSONDecoder().decode([NetworkMonitor.QueuedOperation].self, from: data)) ?? []
+    }
+
     func clear() async {
-        try? await vault.delete()
+        SecItemDelete(baseQuery as CFDictionary)
     }
 }
 
@@ -174,10 +180,17 @@ public final class NetworkMonitor: ObservableObject {
     @Published public private(set) var connectionType: ConnectionType = .none
     @Published public private(set) var queuedOperations: [QueuedOperation] = []
     
-    private let monitor: NWPathMonitor
+    private var monitor: NWPathMonitor
+    private var isMonitoring = false
     private let queue: DispatchQueue
     private let logger: OSLogLogger
     private var cancellables = Set<AnyCancellable>()
+
+    /// Executes a queued operation when connectivity returns. The host app supplies
+    /// this (wiring it to its `CashuWallet`); operations stay queued until it is set —
+    /// CashuKit itself has no wallet reference and must never pretend to process
+    /// money-moving work.
+    public var operationHandler: (@Sendable (QueuedOperation) async throws -> Void)?
     
     // Retry configuration
     private let maxRetryAttempts = 5
@@ -215,15 +228,23 @@ public final class NetworkMonitor: ObservableObject {
     
     // MARK: - Public Methods
     
-    /// Start monitoring network connectivity
+    /// Start monitoring network connectivity. Safe to call after `stopMonitoring()`:
+    /// a cancelled `NWPathMonitor` can never be restarted, so a fresh one is created.
     public func startMonitoring() {
+        guard !isMonitoring else { return }
+
+        monitor = NWPathMonitor()
+        installPathHandler()
         monitor.start(queue: queue)
+        isMonitoring = true
         logger.info("Network monitoring started")
     }
-    
+
     /// Stop monitoring network connectivity
     public func stopMonitoring() {
+        guard isMonitoring else { return }
         monitor.cancel()
+        isMonitoring = false
         logger.info("Network monitoring stopped")
     }
     
@@ -315,22 +336,28 @@ public final class NetworkMonitor: ObservableObject {
     // MARK: - Private Methods
     
     private func setupMonitoring() {
+        installPathHandler()
+        monitor.start(queue: queue)
+        isMonitoring = true
+    }
+
+    private func installPathHandler() {
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                
+
                 let oldStatus = self.currentStatus
                 let newStatus = self.mapPathToStatus(path)
-                
+
                 self.currentStatus = newStatus
                 self.isConnected = newStatus.isConnected
                 self.connectionType = newStatus.connectionType
-                
+
                 // Log status change
                 if oldStatus.connectionType != newStatus.connectionType {
                     self.logger.info("Network status changed: \(newStatus.connectionType.displayName)")
                 }
-                
+
                 // Process queued operations if we're back online
                 if !oldStatus.isConnected && newStatus.isConnected {
                     self.logger.info("Network reconnected, processing queued operations")
@@ -338,8 +365,6 @@ public final class NetworkMonitor: ObservableObject {
                 }
             }
         }
-        
-        startMonitoring()
     }
     
     private func mapPathToStatus(_ path: NWPath) -> NetworkStatus {
@@ -373,37 +398,45 @@ public final class NetworkMonitor: ObservableObject {
     
     private func processQueuedOperations() async {
         guard !isProcessingQueue && isConnected && !operationQueue.isEmpty else { return }
-        
+
+        // No handler installed → nothing can actually execute these. They stay queued
+        // (and persisted) rather than being logged and deleted: a queued sendToken IS
+        // the money, and discarding it while reporting success loses it.
+        guard let operationHandler else {
+            logger.warning("Queued operations pending but no operationHandler is set; leaving \(operationQueue.count) operation(s) queued")
+            return
+        }
+
         isProcessingQueue = true
         defer { isProcessingQueue = false }
-        
+
         logger.info("Processing \(operationQueue.count) queued operations")
-        
+
         // Process operations in priority order
         let operations = operationQueue
-        
+
         for operation in operations {
-            // Skip if too many retries
+            // Operations over the retry ceiling are skipped but never silently deleted —
+            // surfacing them (via `queuedOperations`) lets the app decide their fate.
             if operation.retryCount >= maxRetryAttempts {
-                logger.warning("Operation \(operation.id) exceeded max retries, removing from queue")
-                removeQueuedOperation(operation.id)
+                logger.warning("Operation \(operation.id) exceeded max retries; leaving it queued for the app to resolve")
                 continue
             }
-            
+
             // Calculate retry delay with exponential backoff
             if let lastAttempt = operation.lastAttempt {
                 let delay = calculateRetryDelay(for: operation.retryCount)
                 let timeSinceLastAttempt = Date().timeIntervalSince(lastAttempt)
-                
+
                 if timeSinceLastAttempt < delay {
                     // Skip this operation for now
                     continue
                 }
             }
-            
+
             // Process the operation
             do {
-                try await executeOperation(operation)
+                try await operationHandler(operation)
                 removeQueuedOperation(operation.id)
                 logger.info("Successfully processed queued operation: \(operation.type.rawValue)")
             } catch {
@@ -412,50 +445,20 @@ public final class NetworkMonitor: ObservableObject {
                     operationQueue[index].retryCount += 1
                     operationQueue[index].lastAttempt = Date()
                 }
-                
+
                 logger.error("Failed to process operation \(operation.type.rawValue): \(error.localizedDescription)")
             }
-            
+
             // Check if we're still connected
             if !isConnected {
                 logger.info("Lost connection, stopping queue processing")
                 break
             }
         }
-        
+
         // Update published queue
         queuedOperations = operationQueue
         saveQueuedOperations()
-    }
-    
-    /// Execute a queued operation based on its type.
-    /// 
-    /// This is an SDK-level stub that logs operation execution. Applications using
-    /// CashuKit should implement their own operation handling by:
-    /// 1. Subclassing NetworkMonitor and overriding this method, or
-    /// 2. Using the `processQueuedOperations()` method with their own CashuWallet instance
-    ///
-    /// The operation's `data` field contains JSON-encoded parameters specific to each type.
-    private func executeOperation(_ operation: QueuedOperation) async throws {
-        logger.info("Executing queued operation: \(operation.type)")
-        
-        switch operation.type {
-        case .sendToken:
-            // Send token operation - requires CashuWallet.send()
-            logger.debug("Send token operation queued - application should handle via CashuWallet")
-            
-        case .receiveToken:
-            // Receive token operation - requires CashuWallet.receive()
-            logger.debug("Receive token operation queued - application should handle via CashuWallet")
-            
-        case .checkProofs:
-            // Check proof status - requires CashuWallet.checkProofStates()
-            logger.debug("Check proofs operation queued - application should handle via CashuWallet")
-            
-        case .refreshMint:
-            // Refresh mint info - requires CashuWallet.sync()
-            logger.debug("Refresh mint operation queued - application should handle via CashuWallet")
-        }
     }
     
     private func calculateRetryDelay(for attempt: Int) -> TimeInterval {
@@ -478,13 +481,27 @@ public final class NetworkMonitor: ObservableObject {
         Task {
             let operations = await secureStorage.load()
             await MainActor.run {
-                self.operationQueue = operations
-                self.queuedOperations = operations
+                // MERGE with anything queued while the load was in flight — replacing
+                // wholesale would drop operations enqueued in that window, and the next
+                // save would erase them from the keychain too.
+                let pending = self.operationQueue.filter { current in
+                    !operations.contains(where: { $0.id == current.id })
+                }
+                let merged = (operations + pending).sorted {
+                    $0.priority > $1.priority ||
+                    ($0.priority == $1.priority && $0.createdAt < $1.createdAt)
+                }
+                self.operationQueue = merged
+                self.queuedOperations = merged
                 if !operations.isEmpty {
                     self.logger.info("Loaded \(operations.count) queued operations from secure storage")
                 }
             }
         }
+    }
+
+    deinit {
+        monitor.cancel()
     }
 }
 

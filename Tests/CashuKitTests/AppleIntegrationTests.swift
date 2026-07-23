@@ -81,10 +81,12 @@ struct AppleIntegrationTests {
     
     @Test("End-to-end secure storage flow")
     func testSecureStorageFlow() async throws {
+        // Isolated service: these operations hit the real keychain, and the production
+        // service prefix would collide with genuine wallet data.
         let secureStore = KeychainSecureStore(
-            accessGroup: nil
+            servicePrefix: "com.cashukit.tests.\(UUID().uuidString)"
         )
-        
+
         // Test complete flow
         let testMnemonic = "test mnemonic phrase here"
         
@@ -177,18 +179,17 @@ struct AppleIntegrationTests {
             accessGroup: nil
         )
         let _ = standardStore  // Use to avoid warning
-        
-        // Test maximum security configuration
-        let maxStore = KeychainSecureStore(
+
+        // Test access-control configuration
+        let gatedStore = KeychainSecureStore(
             accessGroup: nil,
-            synchronizable: true
+            accessControl: .userPresence
         )
-        let _ = maxStore
-        
+        let _ = gatedStore
+
         // Test with custom access group
         let customStore = KeychainSecureStore(
-            accessGroup: "com.test.custom",
-            synchronizable: false
+            accessGroup: "com.test.custom"
         )
         let _ = customStore
         
@@ -257,8 +258,10 @@ struct ApplePerformanceTests {
     
     @Test("Keychain operation performance")
     func testKeychainPerformance() async throws {
-        let secureStore = KeychainSecureStore()
-        
+        let secureStore = KeychainSecureStore(
+            servicePrefix: "com.cashukit.tests.\(UUID().uuidString)"
+        )
+
         do {
             let startTime = Date()
             

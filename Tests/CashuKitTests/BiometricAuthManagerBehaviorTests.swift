@@ -97,6 +97,32 @@ struct BiometricAuthManagerBehaviorTests {
         }
     }
 
+    @Test("authenticate succeeds end-to-end through the injected context provider")
+    func authenticateSucceedsThroughProvider() async throws {
+        let manager = BiometricAuthManager(contextProvider: FakeProvider {
+            FakeLAContext(canEvaluate: true, evaluatePolicyResult: .success(true))
+        })
+        // Must not require a prior checkBiometricAvailability() call: availability is
+        // probed at call time (the init-time async check used to race with early calls).
+        try await manager.authenticate(reason: "test")
+    }
+
+    @Test("authenticateForSensitiveOperation always authenticates, regardless of wording")
+    func sensitiveOperationAlwaysAuthenticates() async {
+        // A reason string matching none of the old English keywords ("Pay invoice",
+        // localized text, …) used to SKIP authentication entirely under the default
+        // policy. With a failing evaluator, the call must now throw — proof the prompt
+        // actually ran.
+        let failure = NSError(domain: LAError.errorDomain, code: LAError.authenticationFailed.rawValue)
+        let manager = BiometricAuthManager(contextProvider: FakeProvider {
+            FakeLAContext(canEvaluate: true, evaluatePolicyResult: .failure(LAError(_nsError: failure)))
+        })
+
+        await #expect(throws: BiometricAuthManager.AuthenticationError.self) {
+            try await manager.authenticateForSensitiveOperation("Pay invoice")
+        }
+    }
+
     @Test("configure(policy:) updates the manager's policy")
     func configureUpdatesPolicy() async {
         let manager = BiometricAuthManager(contextProvider: FakeProvider {

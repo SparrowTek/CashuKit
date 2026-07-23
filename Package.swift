@@ -17,18 +17,21 @@ let package = Package(
             targets: ["CashuKit"]),
     ],
     dependencies: [
-//        .package(path: "../CoreCashu"),
-        .package(url: "https://github.com/SparrowTek/CoreCashu.git", branch: "main"),
-        .package(url: "https://github.com/bitcoindevkit/bdk-swift.git", from: "2.0.0"),
-        .package(url: "https://github.com/SparrowTek/Vault.git", from: "2.0.0"),
+        .package(path: "../CoreCashu"),
+//        .package(url: "https://github.com/SparrowTek/CoreCashu.git", branch: "main"),
+        // bdk-swift removed: nothing in Sources/ imported BitcoinDevKit, and its binary
+        // xcframework ships no tvOS/watchOS/visionOS slices — carrying it broke three of
+        // the declared platforms and bloated every consuming app. Re-add when on-chain
+        // support actually lands.
+        // Vault removed: it cannot set kSecAttrAccessible, which the wallet's keychain
+        // items require (ThisDeviceOnly). KeychainSecureStore now delegates to
+        // CoreCashu's keychain store instead.
     ],
     targets: [
         .target(
             name: "CashuKit",
             dependencies: [
                 .product(name: "CoreCashu", package: "CoreCashu"),
-                .product(name: "BitcoinDevKit", package: "bdk-swift"),
-                .product(name: "Vault", package: "Vault"),
             ],
             // Swift 6 language mode (declared below) covers strict concurrency in both
             // debug and release. The earlier `unsafeFlags(..., .when(.debug))` was redundant
