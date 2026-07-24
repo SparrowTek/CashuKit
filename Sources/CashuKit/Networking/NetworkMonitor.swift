@@ -9,7 +9,7 @@ import Foundation
 import Network
 import CoreCashu
 import Combine
-import Security
+import Vault
 
 // MARK: - Secure Storage for Queued Operations
 
@@ -18,51 +18,34 @@ import Security
 /// so items are stored `AfterFirstUnlockThisDeviceOnly` in the data-protection
 /// keychain (never restorable onto another device from a backup).
 actor QueuedOperationsStorage {
-    private enum Constants {
-        static let serviceName = "com.cashukit.network"
-        static let accountName = "queued.operations"
-    }
+    private static let configuration = KeychainConfiguration(
+        serviceName: "com.cashukit.network",
+        accessGroup: nil,
+        accountName: "queued.operations",
+        accessibility: .afterFirstUnlockThisDeviceOnly
+    )
 
-    private var baseQuery: [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Constants.serviceName,
-            kSecAttrAccount as String: Constants.accountName,
-            kSecUseDataProtectionKeychain as String: true,
-        ]
-    }
+    private let vault = Vault(configuration: QueuedOperationsStorage.configuration)
 
     func save(_ operations: [NetworkMonitor.QueuedOperation]) async {
-        guard let data = try? JSONEncoder().encode(operations) else {
+        guard let data = try? JSONEncoder().encode(operations),
+              let jsonString = String(data: data, encoding: .utf8) else {
             return
         }
 
-        var addQuery = baseQuery
-        addQuery[kSecValueData as String] = data
-        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
-        if status == errSecDuplicateItem {
-            let update: [String: Any] = [kSecValueData as String: data]
-            SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
-        }
+        try? await vault.save(jsonString)
     }
 
     func load() async -> [NetworkMonitor.QueuedOperation] {
-        var query = baseQuery
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else {
+        guard let jsonString = try? await vault.read(),
+              let data = jsonString.data(using: .utf8) else {
             return []
         }
         return (try? JSONDecoder().decode([NetworkMonitor.QueuedOperation].self, from: data)) ?? []
     }
 
     func clear() async {
-        SecItemDelete(baseQuery as CFDictionary)
+        try? await vault.delete()
     }
 }
 

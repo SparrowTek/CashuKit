@@ -1,5 +1,5 @@
 {
-  "originHash" : "5e91dcd34e476f772427ee17dcf2f2d00c0d81cfb47819ec0b126d908ed76aa1",
+  "originHash" : "a748869e4ec5efc31bce3b9fa4b03701730a60accb02a973b938884a487ec863",
   "pins" : [
     {
       "identity" : "bigint",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "e07e00fa1fd435143a2dcf8b7eec9a7710b2fdfe",
         "version" : "5.7.0"
+      }
+    },
+    {
+      "identity" : "corecashu",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SparrowTek/CoreCashu.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "7b2405efbd04d36615cbe1117304b776c09c1659"
       }
     },
     {
@@ -53,6 +62,15 @@
       "state" : {
         "revision" : "fd929a6d8f7651ce0f63fc99397fd5762358cc29",
         "version" : "0.6.0"
+      }
+    },
+    {
+      "identity" : "vault",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SparrowTek/Vault.git",
+      "state" : {
+        "revision" : "ccc4ec15f06490e6e7026603b4da6bc62258c46b",
+        "version" : "2.1.0"
       }
     }
   ],

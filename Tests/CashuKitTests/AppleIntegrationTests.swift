@@ -84,7 +84,7 @@ struct AppleIntegrationTests {
         // Isolated service: these operations hit the real keychain, and the production
         // service prefix would collide with genuine wallet data.
         let secureStore = KeychainSecureStore(
-            servicePrefix: "com.cashukit.tests.\(UUID().uuidString)"
+            serviceName: "com.cashukit.tests.\(UUID().uuidString)"
         )
 
         // Test complete flow
@@ -259,7 +259,7 @@ struct ApplePerformanceTests {
     @Test("Keychain operation performance")
     func testKeychainPerformance() async throws {
         let secureStore = KeychainSecureStore(
-            servicePrefix: "com.cashukit.tests.\(UUID().uuidString)"
+            serviceName: "com.cashukit.tests.\(UUID().uuidString)"
         )
 
         do {

@@ -10,7 +10,7 @@ struct KeychainSecureStoreTests {
     // a fixed service name would collide with production data and leak state between
     // (or from aborted) runs.
     private let testStore = KeychainSecureStore(
-        servicePrefix: "com.cashukit.tests.\(UUID().uuidString)"
+        serviceName: "com.cashukit.tests.\(UUID().uuidString)"
     )
     
     // Helper to handle keychain errors in test environment
